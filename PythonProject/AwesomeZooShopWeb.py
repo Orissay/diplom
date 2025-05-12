@@ -57,9 +57,9 @@ class Database:
             # Для совместимости с вашей структурой, telegram_id установлен как 0
             cur.execute(
                 """INSERT INTO orders
-                       (telegram_id, status, city, department, contact_phone, created_at)
+                       (telegram_id, status, city, department, contact_phone)
                    VALUES (?, ?, ?, ?, ?, ?)""",
-                (0, 'pending', city, department, phone, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                (0, 'pending', city, department, phone))
             )
             order_id = cur.lastrowid
 
