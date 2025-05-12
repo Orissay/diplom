@@ -6,6 +6,10 @@ from datetime import datetime
 
 DB_NAME = os.path.join(os.path.dirname(__file__), "AwesomeZooShop.db")
 
+from streamlit import config as _config
+_config.set_option("theme.base", "light")  # Фиксируем светлую тему
+_config.set_option("server.headless", True)  # Отключаем лишние элементы
+
 
 # === Database ===
 class Database:
@@ -18,7 +22,10 @@ class Database:
 
     @staticmethod
     def get_products(category_id=None, search=""):
-        query = "SELECT id, name, description, price, stock, image FROM products"
+        query = """
+                SELECT id, name, description, price, stock, image
+                FROM products \
+                """
         params = []
         if category_id:
             query += " WHERE category_id = ?"
@@ -27,7 +34,7 @@ class Database:
             query += " WHERE name LIKE ?"
             params.append(f"%{search}%")
         query += " ORDER BY stock > 0 DESC, name"
-        
+
         with sqlite3.connect(DB_NAME) as db:
             cur = db.cursor()
             cur.execute(query, params)
@@ -38,10 +45,34 @@ class Database:
         with sqlite3.connect(DB_NAME) as db:
             cur = db.cursor()
             cur.execute(
-                "SELECT id, name, description, price, stock, image FROM products WHERE id = ?", 
+                "SELECT id, name, description, price, stock, image FROM products WHERE id = ?",
                 (pid,)
             )
             return cur.fetchone()
+
+    @staticmethod
+    def create_order(city, department, phone, cart_items):
+        with sqlite3.connect(DB_NAME) as db:
+            cur = db.cursor()
+            # Для совместимости с вашей структурой, telegram_id установлен как 0
+            cur.execute(
+                """INSERT INTO orders
+                       (telegram_id, status, city, department, contact_phone, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (0, 'pending', city, department, phone, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            )
+            order_id = cur.lastrowid
+
+            # Добавляем элементы заказа
+            cur.executemany(
+                """INSERT INTO order_items
+                       (order_id, product_id, quantity, price)
+                   VALUES (?, ?, ?, ?)""",
+                [(order_id, item['id'], item['qty'], item['price']) for item in cart_items]
+            )
+
+            db.commit()
+            return order_id
 
 
 # === Nova Poshta API ===
@@ -221,27 +252,33 @@ class OrderUI:
     @staticmethod
     def process_order(payment_method, city, warehouse, phone, cart_items, total):
         """Обработка оформленного заказа"""
-        order_details = (
-            f"📦 **Нове замовлення**\n\n"
-            f"🛒 **Товари:**\n"
-        )
+        try:
+            order_id = Database.create_order(city, warehouse, phone, cart_items)
 
-        for item in cart_items:
-            order_details += f"- {item['name']} x{item['qty']} = {item['price'] * item['qty']:.2f} грн\n"
+            order_details = (
+                f"📦 **Нове замовлення №{order_id}**\n\n"
+                f"🛒 **Товари:**\n"
+            )
 
-        order_details += (
-            f"\n💰 **Загальна сума:** {total:.2f} грн\n"
-            f"💳 **Спосіб оплати:** {payment_method}\n"
-            f"🏙️ **Місто:** {city}\n"
-            f"📮 **Відділення:** {warehouse}\n"
-            f"📱 **Телефон:** {phone}\n"
-            f"⏰ **Час замовлення:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        )
+            for item in cart_items:
+                order_details += f"- {item['name']} x{item['qty']} = {item['price'] * item['qty']:.2f} грн\n"
 
-        st.success("Замовлення успішно оформлено! Очікуйте дзвінка для підтвердження.")
-        CartManager.clear_cart()
-        st.session_state.page = "main"
-        st.rerun()
+            order_details += (
+                f"\n💰 **Загальна сума:** {total:.2f} грн\n"
+                f"💳 **Спосіб оплати:** {payment_method}\n"
+                f"🏙️ **Місто:** {city}\n"
+                f"📮 **Відділення:** {warehouse}\n"
+                f"📱 **Телефон:** {phone}\n"
+                f"⏰ **Час замовлення:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+
+            st.success("Замовлення успішно оформлено! Очікуйте дзвінка для підтвердження.")
+            CartManager.clear_cart()
+            st.session_state.page = "main"
+            st.rerun()
+
+        except Exception as e:
+            st.error(f"Помилка при оформленні замовлення: {str(e)}")
 
 
 # === Cart UI ===
@@ -391,7 +428,7 @@ class ProductUI:
             st.rerun()
 
         # Отображение информации о товаре
-        st.image(img, use_column_width=True)
+        st.image(img, use_container_width=True)
         st.markdown(f"## {name}")
         st.markdown(desc)
         st.markdown(f"**Ціна:** <span style='font-size:1.5rem; color:#e67e22;'>{price} грн</span>",
@@ -508,13 +545,13 @@ class MainUI:
     def reset_category():
         st.session_state.selected_category = None
         st.session_state.viewing_product = None
-        st.rerun()
+
 
     @staticmethod
     def set_category(cat_id):
         st.session_state.selected_category = cat_id
         st.session_state.viewing_product = None
-        st.rerun()
+        
 
     @staticmethod
     def show_cart_button():
@@ -569,6 +606,7 @@ def show_footer():
 
     # Контактный телефон
     st.markdown("📞 **Контактний телефон:** +380 (44) 123-45-67")
+    st.markdown("📞 **E-mail:** AwesomeZooShop@gmail.com")
 
     st.markdown("---")
     st.markdown("© 2025 AwesomeZooShop. Всі права захищені.",
