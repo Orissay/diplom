@@ -1,7 +1,7 @@
 import streamlit as st
 import sqlite3
 import requests
-import re
+import os
 from datetime import datetime
 
 DB_NAME = os.path.join(os.path.dirname(__file__), "AwesomeZooShop.db")
