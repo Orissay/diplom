@@ -277,23 +277,28 @@ class OrderUI:
 async def main():
     CartManager.init()
 
-    # Корректно получаем параметры из URL
+    # Получаем параметры URL
     params = st.experimental_get_query_params()
-    if 'tgid' in params:
-        # Записываем telegram_id один раз, если его ещё нет в сессии
-        if 'telegram_id' not in st.session_state:
-            st.session_state.telegram_id = int(params['tgid'][0])
-    elif 'telegram_id' not in st.session_state:
-        st.warning("Будь ласка, зайдіть через Telegram бота")
-        st.stop()
 
+    if "telegram_id" not in st.session_state:
+        if 'tgid' in params:
+            try:
+                st.session_state.telegram_id = int(params['tgid'][0])
+            except ValueError:
+                st.error("Неправильний формат telegram_id")
+                st.stop()
+        else:
+            st.warning("Будь ласка, зайдіть через Telegram бота")
+            st.stop()
+
+    # Начальная инициализация состояния
     if "page" not in st.session_state:
         st.session_state.page = "main"
     if "viewing_product" not in st.session_state:
         st.session_state.viewing_product = None
 
     if st.session_state.page == "cart":
-        # Это должна быть реализованная функция для отображения корзины
+        # Пока заглушка — можно заменить на CartManager.show_cart()
         st.error("Функція перегляду кошика ще не реалізована")
         return
 
