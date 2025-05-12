@@ -280,13 +280,6 @@ class OrderUI:
 def main():
     CartManager.init()
 
-    # Проверка авторизации Telegram
-    telegram_id = st.query_params.get("tgid")
-    if telegram_id:
-        st.session_state.telegram_id = int(telegram_id)
-    elif "telegram_id" not in st.session_state:
-        st.warning("Будь ласка, зайдіть через Telegram бота")
-        st.stop()
 
     if "page" not in st.session_state:
         st.session_state.page = "main"
