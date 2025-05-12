@@ -4,7 +4,7 @@ import requests
 import re
 from datetime import datetime
 
-DB_NAME = "AwesomeZooShop.db"
+DB_NAME = os.path.join(os.path.dirname(__file__), "AwesomeZooShop.db")
 
 
 # === Database ===
