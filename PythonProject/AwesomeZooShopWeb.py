@@ -290,7 +290,7 @@ async def main():
         st.session_state.viewing_product = None
 
     if st.session_state.page == "cart":
-        CartUI.show_cart()
+        CartManager.show_cart()
     elif st.session_state.page == "order":
         await OrderUI.show_order_form()
     elif st.session_state.viewing_product:
