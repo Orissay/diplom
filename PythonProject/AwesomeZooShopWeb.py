@@ -1,8 +1,5 @@
-import json
-
 import streamlit as st
-import asyncio
-import aiosqlite
+import sqlite3
 import requests
 from datetime import datetime
 
@@ -12,13 +9,14 @@ DB_NAME = "AwesomeZooShop.db"
 # --- Database Class ---
 class Database:
     @staticmethod
-    async def get_categories():
-        async with aiosqlite.connect(DB_NAME) as db:
-            cur = await db.execute("SELECT id, name FROM categories")
-            return await cur.fetchall()
+    def get_categories():
+        with sqlite3.connect(DB_NAME) as db:
+            cur = db.cursor()
+            cur.execute("SELECT id, name FROM categories")
+            return cur.fetchall()
 
     @staticmethod
-    async def get_products(category_id=None, search=""):
+    def get_products(category_id=None, search=""):
         query = "SELECT id, name, description, price, stock, image FROM products"
         params = []
         if category_id:
@@ -28,50 +26,56 @@ class Database:
             query += " WHERE name LIKE ?"
             params.append(f"%{search}%")
         query += " ORDER BY stock > 0 DESC, name"
-        async with aiosqlite.connect(DB_NAME) as db:
-            cur = await db.execute(query, params)
-            return await cur.fetchall()
+
+        with sqlite3.connect(DB_NAME) as db:
+            cur = db.cursor()
+            cur.execute(query, params)
+            return cur.fetchall()
 
     @staticmethod
-    async def get_product(pid):
-        async with aiosqlite.connect(DB_NAME) as db:
-            cur = await db.execute(
+    def get_product(pid):
+        with sqlite3.connect(DB_NAME) as db:
+            cur = db.cursor()
+            cur.execute(
                 "SELECT id, name, description, price, stock, image FROM products WHERE id = ?",
                 (pid,)
             )
-            return await cur.fetchone()
+            return cur.fetchone()
 
     @staticmethod
-    async def create_order(telegram_id, city, department, phone):
-        async with aiosqlite.connect(DB_NAME) as db:
-            cursor = await db.execute(
+    def create_order(telegram_id, city, department, phone):
+        with sqlite3.connect(DB_NAME) as db:
+            cur = db.cursor()
+            cur.execute(
                 """INSERT INTO orders
                        (telegram_id, status, city, department, contact_phone, created_at)
                    VALUES (?, ?, ?, ?, ?, ?)""",
                 (telegram_id, 'pending', city, department, phone,
-                 datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-            )
-            await db.commit()
-            return cursor.lastrowid
+                 datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            order_id = cur.lastrowid
+            db.commit()
+            return order_id
 
     @staticmethod
-    async def add_order_items(order_id, items):
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.executemany(
+    def add_order_items(order_id, items):
+        with sqlite3.connect(DB_NAME) as db:
+            cur = db.cursor()
+            cur.executemany(
                 """INSERT INTO order_items
                        (order_id, product_id, quantity, price)
                    VALUES (?, ?, ?, ?)""",
                 [(order_id, item['id'], item['qty'], item['price']) for item in items]
             )
-            await db.commit()
+            db.commit()
 
 
 # --- Telegram Notifier ---
 class TelegramNotifier:
     API_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+    API_URL = f"https://api.telegram.org/bot{API_TOKEN}"
 
     @staticmethod
-    async def notify_user(telegram_id, order_id, items, total, city, department, phone):
+    def notify_user(telegram_id, order_id, items, total, city, department, phone):
         try:
             items_text = "\n".join(
                 f"➤ {item['name']} ({item['qty']} × {item['price']} грн) = {item['qty'] * item['price']:.2f} грн"
@@ -86,11 +90,10 @@ class TelegramNotifier:
                 f"📦 Відділення: {department}\n"
                 f"📞 Телефон: {phone}\n\n"
                 f"💵 *Загальна сума:* {total:.2f} грн\n\n"
-                f"Статус: 🟡 Очікує підтвердження\n\n"
-                f"Переглянути: /myorders"
+                f"Статус: 🟡 Очікує підтвердження"
             )
 
-            url = f"https://api.telegram.org/bot{TelegramNotifier.API_TOKEN}/sendMessage"
+            url = f"{TelegramNotifier.API_URL}/sendMessage"
             requests.post(url, json={
                 'chat_id': telegram_id,
                 'text': message,
@@ -181,7 +184,7 @@ class ProductUI:
                 st.rerun()
 
     @staticmethod
-    async def show_product_details(prod):
+    def show_product_details(prod):
         pid, name, desc, price, stock, img = prod
 
         if st.button("← Назад", key="back_to_products"):
@@ -218,7 +221,7 @@ class ProductUI:
 # --- Order UI ---
 class OrderUI:
     @staticmethod
-    async def show_order_form():
+    def show_order_form():
         st.header("Оформлення замовлення")
 
         if st.button("← На головну", key="back_to_main_from_order"):
@@ -229,13 +232,11 @@ class OrderUI:
         total = sum(item["price"] * item["qty"] for item in cart_items)
         st.write(f"**Сума замовлення:** {total:.2f} грн")
 
-        # Получаем telegram_id из сессии
         telegram_id = st.session_state.get('telegram_id')
         if not telegram_id:
             st.error("Будь ласка, увійдіть через Telegram")
             return
 
-        # Форма заказа
         city = st.selectbox("Місто", ["Київ", "Харків", "Одеса", "Львів"])
         department = st.selectbox("Відділення Нової Пошти",
                                   ["Відділення №1", "Відділення №2", "Відділення №3"])
@@ -248,15 +249,15 @@ class OrderUI:
                 return
 
             try:
-                order_id = await Database.create_order(
+                order_id = Database.create_order(
                     telegram_id=telegram_id,
                     city=city,
                     department=department,
                     phone=phone
                 )
 
-                await Database.add_order_items(order_id, cart_items)
-                await TelegramNotifier.notify_user(
+                Database.add_order_items(order_id, cart_items)
+                TelegramNotifier.notify_user(
                     telegram_id=telegram_id,
                     order_id=order_id,
                     items=cart_items,
@@ -276,51 +277,32 @@ class OrderUI:
 
 
 # --- Main App ---
-async def main():
+def main():
     CartManager.init()
 
-    # Получаем параметры URL
-    params = st.experimental_get_query_params()
-
-    if 'telegram_id' not in st.session_state:
-        # Пытаемся получить Telegram user из WebApp
-        try:
-            ctx = st.runtime.scriptrunner.get_script_run_ctx()
-            if ctx and hasattr(ctx, '_request'):
-                data = ctx._request.headers
-                if 'Telegram-User' in data:
-                    user_data = json.loads(data['Telegram-User'])
-                    st.session_state.telegram_id = user_data['id']
-                    st.session_state.telegram_username = user_data.get('username', '')
-        except:
-            pass
-
-    if 'telegram_id' not in st.session_state:
-        st.warning("Будь ласка, відкрийте додаток через Telegram бота")
+    # Проверка авторизации Telegram
+    if 'tgid' in st.query_params:
+        st.session_state.telegram_id = int(st.query_params['tgid'])
+    elif 'telegram_id' not in st.session_state:
+        st.warning("Будь ласка, зайдіть через Telegram бота")
         st.stop()
 
-    # Начальная инициализация состояния
     if "page" not in st.session_state:
         st.session_state.page = "main"
     if "viewing_product" not in st.session_state:
         st.session_state.viewing_product = None
 
     if st.session_state.page == "cart":
-        # Пока заглушка — можно заменить на CartManager.show_cart()
-        st.error("Функція перегляду кошика ще не реалізована")
-        return
-
+        CartManager.show_cart()
     elif st.session_state.page == "order":
-        await OrderUI.show_order_form()
-
+        OrderUI.show_order_form()
     elif st.session_state.viewing_product:
-        prod = await Database.get_product(st.session_state.viewing_product)
+        prod = Database.get_product(st.session_state.viewing_product)
         if prod:
-            await ProductUI.show_product_details(prod)
-
+            ProductUI.show_product_details(prod)
     else:
         search = st.text_input("Пошук товарів", key="search")
-        cats = await Database.get_categories()
+        cats = Database.get_categories()
 
         if cats:
             cols = st.columns(len(cats))
@@ -330,9 +312,9 @@ async def main():
                         st.session_state.selected_category = cid
                         st.rerun()
 
-        prods = await Database.get_products(
+        prods = Database.get_products(
             st.session_state.get("selected_category"),
-            search
+            st.session_state.get("search", "")
         )
 
         cols = st.columns(3)
@@ -347,4 +329,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
