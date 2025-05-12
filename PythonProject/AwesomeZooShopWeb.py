@@ -606,7 +606,7 @@ def show_footer():
 
     # Контактный телефон
     st.markdown("📞 **Контактний телефон:** +380 (44) 123-45-67")
-    st.markdown("📞 **E-mail:** AwesomeZooShop@gmail.com")
+    st.markdown("📧 **E-mail:** AwesomeZooShop@gmail.com")
 
     st.markdown("---")
     st.markdown("© 2025 AwesomeZooShop. Всі права захищені.",
