@@ -281,9 +281,10 @@ def main():
     CartManager.init()
 
     # Проверка авторизации Telegram
-    if 'tgid' in st.query_params:
-        st.session_state.telegram_id = int(st.query_params['tgid'])
-    elif 'telegram_id' not in st.session_state:
+    telegram_id = st.query_params.get("tgid")
+    if telegram_id:
+        st.session_state.telegram_id = int(telegram_id)
+    elif "telegram_id" not in st.session_state:
         st.warning("Будь ласка, зайдіть через Telegram бота")
         st.stop()
 
