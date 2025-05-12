@@ -58,7 +58,7 @@ class Database:
             cur.execute(
                 """INSERT INTO orders
                        (telegram_id, status, city, department, contact_phone)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?)""",
                 (0, 'pending', city, department, phone)
             )
             order_id = cur.lastrowid
