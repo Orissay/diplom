@@ -1,3 +1,5 @@
+import json
+
 import streamlit as st
 import asyncio
 import aiosqlite
@@ -280,16 +282,22 @@ async def main():
     # Получаем параметры URL
     params = st.experimental_get_query_params()
 
-    if "telegram_id" not in st.session_state:
-        if 'tgid' in params:
-            try:
-                st.session_state.telegram_id = int(params['tgid'][0])
-            except ValueError:
-                st.error("Неправильний формат telegram_id")
-                st.stop()
-        else:
-            st.warning("Будь ласка, зайдіть через Telegram бота")
-            st.stop()
+    if 'telegram_id' not in st.session_state:
+        # Пытаемся получить Telegram user из WebApp
+        try:
+            ctx = st.runtime.scriptrunner.get_script_run_ctx()
+            if ctx and hasattr(ctx, '_request'):
+                data = ctx._request.headers
+                if 'Telegram-User' in data:
+                    user_data = json.loads(data['Telegram-User'])
+                    st.session_state.telegram_id = user_data['id']
+                    st.session_state.telegram_username = user_data.get('username', '')
+        except:
+            pass
+
+    if 'telegram_id' not in st.session_state:
+        st.warning("Будь ласка, відкрийте додаток через Telegram бота")
+        st.stop()
 
     # Начальная инициализация состояния
     if "page" not in st.session_state:
