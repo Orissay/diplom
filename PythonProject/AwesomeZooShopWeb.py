@@ -2,7 +2,6 @@ import streamlit as st
 import asyncio
 import aiosqlite
 import requests
-import re
 from datetime import datetime
 
 DB_NAME = "AwesomeZooShop.db"
@@ -44,9 +43,9 @@ class Database:
     async def create_order(telegram_id, city, department, phone):
         async with aiosqlite.connect(DB_NAME) as db:
             cursor = await db.execute(
-                """INSERT INTO orders 
-                (telegram_id, status, city, department, contact_phone, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)""",
+                """INSERT INTO orders
+                       (telegram_id, status, city, department, contact_phone, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
                 (telegram_id, 'pending', city, department, phone,
                  datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
             )
@@ -57,9 +56,9 @@ class Database:
     async def add_order_items(order_id, items):
         async with aiosqlite.connect(DB_NAME) as db:
             await db.executemany(
-                """INSERT INTO order_items 
-                (order_id, product_id, quantity, price)
-                VALUES (?, ?, ?, ?)""",
+                """INSERT INTO order_items
+                       (order_id, product_id, quantity, price)
+                   VALUES (?, ?, ?, ?)""",
                 [(order_id, item['id'], item['qty'], item['price']) for item in items]
             )
             await db.commit()
@@ -67,7 +66,7 @@ class Database:
 
 # --- Telegram Notifier ---
 class TelegramNotifier:
-    API_TOKEN = "7244593523:AAGhMM2XuHgKQ0zII5zE0xNSe5mS5-N0vWw"
+    API_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
 
     @staticmethod
     async def notify_user(telegram_id, order_id, items, total, city, department, phone):
@@ -274,27 +273,24 @@ class OrderUI:
                 st.error(f"Помилка: {str(e)}")
 
 
+# --- Main App ---
 async def main():
-    # Инициализация менеджера корзины
     CartManager.init()
 
     # Проверка авторизации Telegram
-    query_params = st.query_params
-    if 'tgid' in query_params:
-        st.session_state.telegram_id = int(query_params['tgid'])
+    if 'tgid' in st.query_params:
+        st.session_state.telegram_id = int(st.query_params['tgid'])
     elif 'telegram_id' not in st.session_state:
         st.warning("Будь ласка, зайдіть через Telegram бота")
         st.stop()
 
-    # Инициализация состояния приложения
     if "page" not in st.session_state:
         st.session_state.page = "main"
     if "viewing_product" not in st.session_state:
         st.session_state.viewing_product = None
 
-    # Роутинг страниц
     if st.session_state.page == "cart":
-        CartManager.show_cart()
+        CartUI.show_cart()
     elif st.session_state.page == "order":
         await OrderUI.show_order_form()
     elif st.session_state.viewing_product:
@@ -302,7 +298,6 @@ async def main():
         if prod:
             await ProductUI.show_product_details(prod)
     else:
-        # Главная страница с товарами
         search = st.text_input("Пошук товарів", key="search")
         cats = await Database.get_categories()
 
