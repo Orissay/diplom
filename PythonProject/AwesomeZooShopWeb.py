@@ -459,11 +459,15 @@ class ProductUI:
 class CartManager:
     @staticmethod
     def init():
+        """Инициализация корзины и всех необходимых переменных состояния"""
         if "cart" not in st.session_state:
             st.session_state.cart = []
+        if "cart_initialized" not in st.session_state:
+            st.session_state.cart_initialized = True
 
     @staticmethod
     def add(pid, name, price, image):
+        CartManager.init()  # Гарантируем инициализацию
         for item in st.session_state.cart:
             if item["id"] == pid:
                 item["qty"] += 1
@@ -478,22 +482,27 @@ class CartManager:
 
     @staticmethod
     def get():
+        CartManager.init()  # Гарантируем инициализацию
         return st.session_state.cart
 
     @staticmethod
     def total_items():
+        CartManager.init()  # Гарантируем инициализацию
         return sum(item["qty"] for item in st.session_state.cart)
 
     @staticmethod
     def remove(pid):
+        CartManager.init()  # Гарантируем инициализацию
         st.session_state.cart = [item for item in st.session_state.cart if item["id"] != pid]
 
     @staticmethod
     def clear_cart():
+        CartManager.init()  # Гарантируем инициализацию
         st.session_state.cart = []
 
     @staticmethod
     def update_qty(pid):
+        CartManager.init()  # Гарантируем инициализацию
         for item in st.session_state.cart:
             if item["id"] == pid:
                 item["qty"] = st.session_state[f"qty_{pid}"]
@@ -506,21 +515,22 @@ class MainUI:
         col1, col2 = st.columns([1, 5])
         with col1:
             if st.button("🏠", help="На головну", key="home_btn"):
-                st.session_state.search_text = ""
-                st.session_state.selected_category = None
-                st.session_state.viewing_product = None
-                st.rerun()
+                st.session_state.update({
+                    "search_text": "",
+                    "selected_category": None,
+                    "viewing_product": None,
+                    "page": "main",
+                    "force_update": not st.session_state.get('force_update', False)
+                })
         with col2:
             search = st.text_input(
                 "Пошук",
                 value=st.session_state.get("search_text", ""),
                 key="search_input",
-                placeholder="🔍 Пошук товарів"
+                placeholder="🔍 Пошук товарів",
+                on_change=lambda: st.session_state.update({"search_text": st.session_state.search_input})
             )
-            if search != st.session_state.get("search_text", ""):
-                st.session_state.search_text = search
-                st.rerun()
-        return search
+        return st.session_state.get("search_text", "")
 
     @staticmethod
     def show_categories(categories):
@@ -528,38 +538,53 @@ class MainUI:
         cols = st.columns(len(categories))
         for idx, (cid, cname) in enumerate(categories):
             with cols[idx]:
-                if st.button(cname, key=f"cat_{cid}"):
-                    MainUI.set_category(cid)
+                if st.button(cname,
+                           key=f"cat_{cid}_{st.session_state.get('cat_key', 0)}",
+                           on_click=lambda cid=cid: MainUI._set_category(cid)):
+                    pass
+
+    @staticmethod
+    def _set_category(cid):
+        """Обработчик выбора категории"""
+        st.session_state.update({
+            "selected_category": cid,
+            "viewing_product": None,
+            "cat_key": st.session_state.get('cat_key', 0) + 1
+        })
 
     @staticmethod
     def category_header(selected_category, categories):
         c1, c2 = st.columns([1, 10])
         if selected_category:
-            c1.button("← Назад", on_click=MainUI.reset_category, key="back_btn")
+            if c1.button("← Назад",
+                        key=f"back_btn_{st.session_state.get('back_key', 0)}",
+                        on_click=MainUI._reset_category):
+                pass
             name = next((n for (i, n) in categories if i == selected_category), "")
             c2.subheader(name)
         else:
             c2.subheader("Головна")
 
     @staticmethod
-    def reset_category():
-        st.session_state.selected_category = None
-        st.session_state.viewing_product = None
-
-
-    @staticmethod
-    def set_category(cat_id):
-        st.session_state.selected_category = cat_id
-        st.session_state.viewing_product = None
-        
+    def _reset_category():
+        """Обработчик кнопки Назад"""
+        st.session_state.update({
+            "selected_category": None,
+            "viewing_product": None,
+            "back_key": st.session_state.get('back_key', 0) + 1
+        })
 
     @staticmethod
     def show_cart_button():
         n = CartManager.total_items()
         if n > 0:
-            if st.button(f"🛒 Кошик ({n})", key="cart_btn"):
-                st.session_state.page = "cart"
-                st.rerun()
+            if st.button(f"🛒 Кошик ({n})",
+                        key=f"cart_btn_{st.session_state.get('cart_key', 0)}",
+                        on_click=lambda: st.session_state.update({
+                            "page": "cart",
+                            "cart_key": st.session_state.get('cart_key', 0) + 1
+                        })):
+                pass
 
 
 def show_footer():
@@ -615,7 +640,8 @@ def show_footer():
 
 # === Main App ===
 def main():
-    CartManager.init()
+    # Инициализация всех состояний
+    CartManager.init()  # Явная инициализация корзины
 
     if "page" not in st.session_state:
         st.session_state.page = "main"
@@ -625,20 +651,26 @@ def main():
         st.session_state.viewing_product = None
     if "search_text" not in st.session_state:
         st.session_state.search_text = ""
+    if "force_update" not in st.session_state:
+        st.session_state.force_update = False
+    if "cat_key" not in st.session_state:
+        st.session_state.cat_key = 0
+    if "back_key" not in st.session_state:
+        st.session_state.back_key = 0
+    if "cart_key" not in st.session_state:
+        st.session_state.cart_key = 0
 
+    # Отрисовка интерфейса
     if st.session_state.page == "cart":
         CartUI.show_cart()
     elif st.session_state.page == "order":
         OrderUI.show_order_form()
     else:
         search = MainUI.search_bar()
-        st.session_state.search_text = search
-
         cats = Database.get_categories()
         MainUI.category_header(st.session_state.selected_category, cats)
 
-        # Отображаем категории горизонтально
-        if not st.session_state.selected_category and not search:
+        if not st.session_state.selected_category and not st.session_state.search_text:
             MainUI.show_categories(cats)
 
         if st.session_state.viewing_product:
@@ -646,25 +678,18 @@ def main():
             if prod:
                 ProductUI.show_product_details(prod)
         else:
-            if not st.session_state.selected_category and not search:
-                prods = Database.get_products()
-                cols = st.columns(3, gap="medium")
-                for idx, prod in enumerate(prods):
-                    with cols[idx % 3]:
-                        ProductUI.show_product_card(prod)
-            else:
-                prods = Database.get_products(st.session_state.selected_category, search)
-                cols = st.columns(3, gap="medium")
-                for idx, prod in enumerate(prods):
-                    with cols[idx % 3]:
-                        ProductUI.show_product_card(prod)
+            prods = Database.get_products(
+                st.session_state.selected_category,
+                st.session_state.search_text
+            )
+            cols = st.columns(3, gap="medium")
+            for idx, prod in enumerate(prods):
+                with cols[idx % 3]:
+                    ProductUI.show_product_card(prod)
 
         MainUI.show_cart_button()
 
-    # Показываем футер на всех страницах
-    if st.session_state.page in ["main", "cart", "order"]:
-        show_footer()
-
+    show_footer()
 
 if __name__ == "__main__":
     main()
