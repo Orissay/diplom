@@ -277,9 +277,12 @@ class OrderUI:
 async def main():
     CartManager.init()
 
-    # Проверка авторизации Telegram
-    if 'tgid' in st.query_params:
-        st.session_state.telegram_id = int(st.query_params['tgid'])
+    # Корректно получаем параметры из URL
+    params = st.experimental_get_query_params()
+    if 'tgid' in params:
+        # Записываем telegram_id один раз, если его ещё нет в сессии
+        if 'telegram_id' not in st.session_state:
+            st.session_state.telegram_id = int(params['tgid'][0])
     elif 'telegram_id' not in st.session_state:
         st.warning("Будь ласка, зайдіть через Telegram бота")
         st.stop()
@@ -290,13 +293,18 @@ async def main():
         st.session_state.viewing_product = None
 
     if st.session_state.page == "cart":
-        CartManager.show_cart()
+        # Это должна быть реализованная функция для отображения корзины
+        st.error("Функція перегляду кошика ще не реалізована")
+        return
+
     elif st.session_state.page == "order":
         await OrderUI.show_order_form()
+
     elif st.session_state.viewing_product:
         prod = await Database.get_product(st.session_state.viewing_product)
         if prod:
             await ProductUI.show_product_details(prod)
+
     else:
         search = st.text_input("Пошук товарів", key="search")
         cats = await Database.get_categories()
@@ -311,7 +319,7 @@ async def main():
 
         prods = await Database.get_products(
             st.session_state.get("selected_category"),
-            st.session_state.get("search", "")
+            search
         )
 
         cols = st.columns(3)
