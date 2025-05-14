@@ -1,78 +1,72 @@
 import streamlit as st
-import sqlite3
 import requests
 import os
 from datetime import datetime
-
-DB_NAME = os.path.join(os.path.dirname(__file__), "AwesomeZooShop.db")
-
+from supabase import create_client, Client
 from streamlit import config as _config
-_config.set_option("theme.base", "light")  # Фиксируем светлую тему
-_config.set_option("server.headless", True)  # Отключаем лишние элементы
+
+# Конфигурация Supabase
+SUPABASE_URL = "https://hxowoktqmcgrckptjvnz.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4b3dva3RxbWNncmNrcHRqdm56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcyMDc0MzgsImV4cCI6MjA2Mjc4MzQzOH0.znG6XuvFzHE_iIpl3j79UW7dJORB3UhF-qAHvuSrOiY"
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# Настройки Streamlit
+_config.set_option("theme.base", "light")
+_config.set_option("server.headless", True)
 
 
 # === Database ===
 class Database:
     @staticmethod
     def get_categories():
-        with sqlite3.connect(DB_NAME) as db:
-            cur = db.cursor()
-            cur.execute("SELECT id, name FROM categories")
-            return cur.fetchall()
+        response = supabase.table("categories").select("id, name").execute()
+        return [(item['id'], item['name']) for item in response.data]
 
     @staticmethod
     def get_products(category_id=None, search=""):
-        query = """
-                SELECT id, name, description, price, stock, image
-                FROM products \
-                """
-        params = []
-        if category_id:
-            query += " WHERE category_id = ?"
-            params.append(category_id)
-        elif search:
-            query += " WHERE name LIKE ?"
-            params.append(f"%{search}%")
-        query += " ORDER BY stock > 0 DESC, name"
+        query = supabase.table("products").select("id, name, description, price, stock, image")
 
-        with sqlite3.connect(DB_NAME) as db:
-            cur = db.cursor()
-            cur.execute(query, params)
-            return cur.fetchall()
+        if category_id:
+            query = query.eq("category_id", category_id)
+        elif search:
+            query = query.ilike("name", f"%{search}%")
+
+        query = query.order("stock", desc=True).order("name")
+        response = query.execute()
+        return [(item['id'], item['name'], item['description'], item['price'],
+                 item['stock'], item['image']) for item in response.data]
 
     @staticmethod
     def get_product(pid):
-        with sqlite3.connect(DB_NAME) as db:
-            cur = db.cursor()
-            cur.execute(
-                "SELECT id, name, description, price, stock, image FROM products WHERE id = ?",
-                (pid,)
-            )
-            return cur.fetchone()
+        response = supabase.table("products").select("*").eq("id", pid).execute()
+        if response.data:
+            item = response.data[0]
+            return (item['id'], item['name'], item['description'], item['price'],
+                    item['stock'], item['image'])
+        return None
 
     @staticmethod
     def create_order(city, department, phone, cart_items):
-        with sqlite3.connect(DB_NAME) as db:
-            cur = db.cursor()
-            # Для совместимости с вашей структурой, telegram_id установлен как 0
-            cur.execute(
-                """INSERT INTO orders
-                       (telegram_id, status, city, department, contact_phone)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (0, 'pending', city, department, phone)
-            )
-            order_id = cur.lastrowid
+        order_data = {
+            "telegram_id": 0,
+            "status": "pending",
+            "city": city,
+            "department": department,
+            "contact_phone": phone,
+            "created_at": datetime.now().isoformat()
+        }
+        order_response = supabase.table("orders").insert(order_data).execute()
+        order_id = order_response.data[0]['id']
 
-            # Добавляем элементы заказа
-            cur.executemany(
-                """INSERT INTO order_items
-                       (order_id, product_id, quantity, price)
-                   VALUES (?, ?, ?, ?)""",
-                [(order_id, item['id'], item['qty'], item['price']) for item in cart_items]
-            )
+        order_items = [{
+            "order_id": order_id,
+            "product_id": item['id'],
+            "quantity": item['qty'],
+            "price": item['price']
+        } for item in cart_items]
 
-            db.commit()
-            return order_id
+        supabase.table("order_items").insert(order_items).execute()
+        return order_id
 
 
 # === Nova Poshta API ===
@@ -90,7 +84,7 @@ class NovaPoshtaAPI:
             })
             return [city["Description"] for city in response.json()["data"]]
         except:
-            return ["Київ", "Харків", "Одеса", "Львів"]  # Fallback список
+            return ["Київ", "Харків", "Одеса", "Львів"]
 
     @staticmethod
     def get_warehouses(city_name):
@@ -105,7 +99,7 @@ class NovaPoshtaAPI:
             })
             return [wh["Description"] for wh in response.json()["data"]]
         except:
-            return ["Відділення №1", "Відділення №2", "Відділення №3"]  # Fallback список
+            return ["Відділення №1", "Відділення №2", "Відділення №3"]
 
 
 # === Order UI ===
@@ -122,7 +116,6 @@ class OrderUI:
         total = sum(item["price"] * item["qty"] for item in cart_items)
         st.write(f"**Сума замовлення:** {total:.2f} грн")
 
-        # Инициализация состояния
         if "order_data" not in st.session_state:
             st.session_state.order_data = {
                 "cities": NovaPoshtaAPI.get_cities(),
@@ -140,7 +133,6 @@ class OrderUI:
                 if st.session_state.order_data["warehouses"]:
                     st.session_state.order_data["warehouse"] = st.session_state.order_data["warehouses"][0]
 
-        # Выбор города
         city = st.selectbox(
             "Місто",
             st.session_state.order_data["cities"],
@@ -150,7 +142,6 @@ class OrderUI:
             key="city_select"
         )
 
-        # Обновляем список отделений при изменении города
         if city != st.session_state.order_data["city"]:
             st.session_state.order_data["city"] = city
             st.session_state.order_data["warehouses"] = NovaPoshtaAPI.get_warehouses(city)
@@ -161,7 +152,6 @@ class OrderUI:
             )
             st.rerun()
 
-        # Выбор отделения
         if st.session_state.order_data["city"]:
             warehouse = st.selectbox(
                 "Відділення Нової Пошти",
@@ -173,14 +163,10 @@ class OrderUI:
             )
             st.session_state.order_data["warehouse"] = warehouse
 
-        # Поле телефона с моментальной очисткой
         st.markdown("**Контактний телефон**")
-
-        # Инициализация значения телефона
         if 'phone_input' not in st.session_state:
             st.session_state.phone_input = "+380"
 
-        # Создаем текстовое поле с обработчиком изменений
         phone_input = st.text_input(
             "",
             value=st.session_state.phone_input,
@@ -191,10 +177,8 @@ class OrderUI:
             placeholder="+380XXXXXXXXX"
         )
 
-        # Сохраняем очищенное значение
         st.session_state.order_data["phone"] = st.session_state.phone_input
 
-        # Выбор способа оплаты
         payment_method = st.radio(
             "Спосіб оплати:",
             ["Оплата при отриманні", "Переказ за реквізитами"],
@@ -202,7 +186,6 @@ class OrderUI:
         )
         st.session_state.order_data["payment_method"] = payment_method
 
-        # Кнопка подтверждения заказа
         if st.button("Підтвердити замовлення", key="confirm_order"):
             phone = st.session_state.order_data["phone"]
             if len(phone) != 13 or not phone.startswith("+380") or not phone[1:].isdigit():
@@ -219,25 +202,17 @@ class OrderUI:
 
     @staticmethod
     def clean_phone_input():
-        """Моментально очищает ввод телефона от недопустимых символов"""
         if 'phone_input_field' in st.session_state:
             current_value = st.session_state.phone_input_field
-
-            # Оставляем только + в начале и цифры
             cleaned_value = "+"
             if current_value.startswith("+"):
-                # Для части после + оставляем только цифры
                 digits = [c for c in current_value[1:] if c.isdigit()]
                 cleaned_value += "".join(digits)
             else:
-                # Если + нет, добавляем его и цифры
                 digits = [c for c in current_value if c.isdigit()]
                 cleaned_value += "".join(digits)
 
-            # Ограничиваем длину
             cleaned_value = cleaned_value[:13]
-
-            # Форсируем начало +380
             if not cleaned_value.startswith("+380"):
                 if len(cleaned_value) > 4:
                     cleaned_value = "+380" + cleaned_value[4:]
@@ -245,13 +220,11 @@ class OrderUI:
                     cleaned_value = "+380"
                 cleaned_value = cleaned_value[:13]
 
-            # Обновляем значения
             st.session_state.phone_input = cleaned_value
             st.session_state.phone_input_field = cleaned_value
 
     @staticmethod
     def process_order(payment_method, city, warehouse, phone, cart_items, total):
-        """Обработка оформленного заказа"""
         try:
             order_id = Database.create_order(city, warehouse, phone, cart_items)
 
@@ -284,7 +257,6 @@ class OrderUI:
 class CartUI:
     @staticmethod
     def show_cart_item(item):
-        """Отображает один товар в корзине с компактным управлением количеством"""
         col1, col2, col3 = st.columns([3, 6, 3])
 
         with col1:
@@ -294,7 +266,6 @@ class CartUI:
             st.write(f"**{item['name']}**")
             st.write(f"💰 {item['price']} грн/шт")
 
-            # Компактное управление количеством
             q_col1, q_col2 = st.columns([3, 1])
             with q_col1:
                 st.number_input(
@@ -316,7 +287,6 @@ class CartUI:
 
     @staticmethod
     def show_cart():
-        """Отображает всю корзину с новым дизайном"""
         st.header("🧺 Кошик")
 
         if st.button("← Назад до магазину", key="back_to_shop"):
@@ -334,7 +304,6 @@ class CartUI:
         total = sum(item["price"] * item["qty"] for item in cart_items)
         st.subheader(f"**Разом:** {total:.2f} грн")
 
-        # Кнопка оформления заказа
         if st.button("Оформити замовлення", type="primary"):
             st.session_state.page = "order"
             st.rerun()
@@ -343,7 +312,6 @@ class CartUI:
 class ProductUI:
     @staticmethod
     def show_product_card(prod):
-        """Отображает карточку товара с выделенной ценой"""
         pid, name, desc, price, stock, img = prod
 
         with st.container():
@@ -426,7 +394,6 @@ class ProductUI:
             st.session_state.viewing_product = None
             st.rerun()
 
-        # Отображение информации о товаре
         st.image(img, use_container_width=True)
         st.markdown(f"## {name}")
         st.markdown(desc)
@@ -438,7 +405,6 @@ class ProductUI:
         else:
             st.error("**Наявність:** Немає в наявності")
 
-        # Кнопка "Добавить в корзину"
         if stock > 0:
             if st.button("🛒 Додати до кошика",
                          key=f"add_{pid}",
@@ -458,7 +424,6 @@ class ProductUI:
 class CartManager:
     @staticmethod
     def init():
-        """Инициализация корзины и всех необходимых переменных состояния"""
         if "cart" not in st.session_state:
             st.session_state.cart = []
         if "cart_initialized" not in st.session_state:
@@ -466,7 +431,7 @@ class CartManager:
 
     @staticmethod
     def add(pid, name, price, image):
-        CartManager.init()  # Гарантируем инициализацию
+        CartManager.init()
         for item in st.session_state.cart:
             if item["id"] == pid:
                 item["qty"] += 1
@@ -481,37 +446,38 @@ class CartManager:
 
     @staticmethod
     def get():
-        CartManager.init()  # Гарантируем инициализацию
+        CartManager.init()
         return st.session_state.cart
 
     @staticmethod
     def total_items():
-        CartManager.init()  # Гарантируем инициализацию
+        CartManager.init()
         return sum(item["qty"] for item in st.session_state.cart)
 
     @staticmethod
     def remove(pid):
-        CartManager.init()  # Гарантируем инициализацию
+        CartManager.init()
         st.session_state.cart = [item for item in st.session_state.cart if item["id"] != pid]
 
     @staticmethod
     def clear_cart():
-        CartManager.init()  # Гарантируем инициализацию
+        CartManager.init()
         st.session_state.cart = []
 
     @staticmethod
     def update_qty(pid):
-        CartManager.init()  # Гарантируем инициализацию
+        CartManager.init()
         for item in st.session_state.cart:
             if item["id"] == pid:
                 item["qty"] = st.session_state[f"qty_{pid}"]
 
 
-# === Main UI ===
 class MainUI:
     @staticmethod
-    def search_bar():
-        col1, col2 = st.columns([1, 5])
+    def show_header():
+        # Создаем 3 колонки: кнопка дома, поиск, корзина
+        col1, col2, col3 = st.columns([1, 5, 2])
+
         with col1:
             if st.button("🏠", help="На головну", key="home_btn"):
                 st.session_state.update({
@@ -521,30 +487,55 @@ class MainUI:
                     "page": "main",
                     "force_update": not st.session_state.get('force_update', False)
                 })
+
         with col2:
             search = st.text_input(
                 "Пошук",
                 value=st.session_state.get("search_text", ""),
                 key="search_input",
                 placeholder="🔍 Пошук товарів",
-                on_change=lambda: st.session_state.update({"search_text": st.session_state.search_input})
+                on_change=lambda: st.session_state.update({"search_text": st.session_state.search_input}),
+                label_visibility="collapsed"
             )
+
+        with col3:
+            MainUI._show_cart_button("header")  # Используем внутренний метод для кнопки в шапке
+
         return st.session_state.get("search_text", "")
 
     @staticmethod
+    def _show_cart_button(position="footer"):
+        """Внутренний метод для отображения кнопки корзины"""
+        cart_count = CartManager.total_items()
+        cart_text = f"🛒 Кошик ({cart_count})" if cart_count > 0 else "🛒 Кошик"
+
+        # Для нижней кнопки используем primary стиль, для верхней - secondary
+        button_type = "primary" if position == "footer" else "secondary"
+
+        if st.button(cart_text,
+                     key=f"cart_btn_{position}",
+                     use_container_width=True,
+                     type=button_type):
+            st.session_state.page = "cart"
+            st.rerun()
+
+    @staticmethod
+    def show_cart_button():
+        """Публичный метод для отображения кнопки корзины внизу"""
+        MainUI._show_cart_button("footer")
+
+    @staticmethod
     def show_categories(categories):
-        """Отображает категории в горизонтальном ряду"""
         cols = st.columns(len(categories))
         for idx, (cid, cname) in enumerate(categories):
             with cols[idx]:
                 if st.button(cname,
-                           key=f"cat_{cid}_{st.session_state.get('cat_key', 0)}",
-                           on_click=lambda cid=cid: MainUI._set_category(cid)):
+                             key=f"cat_{cid}_{st.session_state.get('cat_key', 0)}",
+                             on_click=lambda cid=cid: MainUI._set_category(cid)):
                     pass
 
     @staticmethod
     def _set_category(cid):
-        """Обработчик выбора категории"""
         st.session_state.update({
             "selected_category": cid,
             "viewing_product": None,
@@ -556,8 +547,8 @@ class MainUI:
         c1, c2 = st.columns([1, 10])
         if selected_category:
             if c1.button("← Назад",
-                        key=f"back_btn_{st.session_state.get('back_key', 0)}",
-                        on_click=MainUI._reset_category):
+                         key=f"back_btn_{st.session_state.get('back_key', 0)}",
+                         on_click=MainUI._reset_category):
                 pass
             name = next((n for (i, n) in categories if i == selected_category), "")
             c2.subheader(name)
@@ -566,24 +557,11 @@ class MainUI:
 
     @staticmethod
     def _reset_category():
-        """Обработчик кнопки Назад"""
         st.session_state.update({
             "selected_category": None,
             "viewing_product": None,
             "back_key": st.session_state.get('back_key', 0) + 1
         })
-
-    @staticmethod
-    def show_cart_button():
-        n = CartManager.total_items()
-        if n > 0:
-            if st.button(f"🛒 Кошик ({n})",
-                        key=f"cart_btn_{st.session_state.get('cart_key', 0)}",
-                        on_click=lambda: st.session_state.update({
-                            "page": "cart",
-                            "cart_key": st.session_state.get('cart_key', 0) + 1
-                        })):
-                pass
 
 
 def show_footer():
@@ -607,7 +585,6 @@ def show_footer():
 
     st.markdown("---")
 
-    # Создаем 2 колонки для кнопок
     col1, col2 = st.columns(2)
 
     with col1:
@@ -628,9 +605,8 @@ def show_footer():
         if st.button("Повернення", key="footer_returns", help="Условия возврата"):
             st.info("Для повернення товару зв'яжіться з нами по телефону або email.")
 
-    # Контактный телефон
     st.markdown("📞 **Контактний телефон:** +380 (44) 123-45-67")
-    st.markdown("📞 **E-mail:** AwesomeZooShop@gmail.com")
+    st.markdown("📧 **E-mail:** AwesomeZooShop@gmail.com")
 
     st.markdown("---")
     st.markdown("© 2025 AwesomeZooShop. Всі права захищені.",
@@ -639,9 +615,9 @@ def show_footer():
 
 # === Main App ===
 def main():
-    # Инициализация всех состояний
-    CartManager.init()  # Явная инициализация корзины
+    CartManager.init()
 
+    # Инициализация состояния (остается без изменений)
     if "page" not in st.session_state:
         st.session_state.page = "main"
     if "selected_category" not in st.session_state:
@@ -656,16 +632,13 @@ def main():
         st.session_state.cat_key = 0
     if "back_key" not in st.session_state:
         st.session_state.back_key = 0
-    if "cart_key" not in st.session_state:
-        st.session_state.cart_key = 0
 
-    # Отрисовка интерфейса
     if st.session_state.page == "cart":
         CartUI.show_cart()
     elif st.session_state.page == "order":
         OrderUI.show_order_form()
     else:
-        search = MainUI.search_bar()
+        search = MainUI.show_header()
         cats = Database.get_categories()
         MainUI.category_header(st.session_state.selected_category, cats)
 
@@ -686,6 +659,8 @@ def main():
                 with cols[idx % 3]:
                     ProductUI.show_product_card(prod)
 
+        # Добавляем кнопку корзины внизу (идентичную верхней)
+        st.write("")  # Добавляем отступ
         MainUI.show_cart_button()
 
     show_footer()
