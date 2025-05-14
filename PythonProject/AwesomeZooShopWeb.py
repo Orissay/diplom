@@ -15,7 +15,17 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 _config.set_option("theme.base", "light")
 _config.set_option("server.headless", True)
 
+def get_telegram_user_id():
+    try:
+        from streamlit.web.server.websocket_headers import _get_websocket_headers
+        headers = _get_websocket_headers()
+        if headers and "X-Telegram-User-ID" in headers:
+            return int(headers["X-Telegram-User-ID"])
+    except:
+        return None
 
+if "telegram_id" not in st.session_state:
+    st.session_state.telegram_id = get_telegram_user_id()
 # === Database ===
 class Database:
     @staticmethod
