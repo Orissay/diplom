@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import os
+import json
 from datetime import datetime
 from supabase import create_client, Client
 from streamlit import config as _config
@@ -235,26 +236,31 @@ class OrderUI:
         try:
             order_id = Database.create_order(city, warehouse, phone, cart_items)
 
-            order_details = (
-                f"📦 **Нове замовлення №{order_id}**\n\n"
-                f"🛒 **Товари:**\n"
-            )
+            # Готуємо дані для відправки в Telegram
+            order_data = {
+                "status": "pending",
+                "order_id": order_id,
+                "total": total,
+                "payment_method": payment_method,
+                "city": city,
+                "warehouse": warehouse,
+                "phone": phone,
+                "items": [{"name": item["name"], "qty": item["qty"], "price": item["price"]} for item in cart_items]
+            }
 
-            for item in cart_items:
-                order_details += f"- {item['name']} x{item['qty']} = {item['price'] * item['qty']:.2f} грн\n"
+            # Відправляємо дані назад у Telegram WebApp
+            if st.query_params.get("tgWebAppStartParam"):
+                st.markdown(f"""
+                <script>
+                if (window.Telegram && window.Telegram.WebApp) {{
+                    window.Telegram.WebApp.sendData(JSON.stringify({json.dumps(order_data)}));
+                    window.Telegram.WebApp.close();
+                }}
+                </script>
+                """, unsafe_allow_html=True)
 
-            order_details += (
-                f"\n💰 **Загальна сума:** {total:.2f} грн\n"
-                f"💳 **Спосіб оплати:** {payment_method}\n"
-                f"🏙️ **Місто:** {city}\n"
-                f"📮 **Відділення:** {warehouse}\n"
-                f"📱 **Телефон:** {phone}\n"
-            )
-
-            st.success("Замовлення успішно оформлено! Очікуйте дзвінка для підтвердження.")
+            st.success("Замовлення успішно оформлено! Дякуємо за покупку.")
             CartManager.clear_cart()
-            st.session_state.page = "main"
-            st.rerun()
 
         except Exception as e:
             st.error(f"Помилка при оформленні замовлення: {str(e)}")
