@@ -46,16 +46,20 @@ class Database:
         return None
 
     @staticmethod
-    def create_order(city, department, phone, cart_items, telegram_id=0):
+    def create_order(city, department, phone, cart_items, telegram_id=None):
         order_data = {
-            "telegram_id": telegram_id,  # 0 або реальний ID
+            "telegram_id": telegram_id,  # NULL, якщо None
             "status": "pending",
             "city": city,
             "department": department,
             "contact_phone": phone,
         }
 
+        # Видаляємо None-поля, щоб Supabase не ламався
+        order_data = {k: v for k, v in order_data.items() if v is not None}
+
         order_response = supabase.table("orders").insert(order_data).execute()
+
         if not order_response.data:
             raise Exception("Не вдалося створити замовлення")
 
