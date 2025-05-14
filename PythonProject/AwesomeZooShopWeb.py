@@ -17,15 +17,17 @@ _config.set_option("server.headless", True)
 
 def get_telegram_user_id():
     try:
-        from streamlit.web.server.websocket_headers import st.context.headers
-        headers = st.context.headers()
+        headers = st.context.headers
         if headers and "X-Telegram-User-ID" in headers:
             return int(headers["X-Telegram-User-ID"])
-    except:
-        return None
+    except Exception as e:
+        st.error(f"Error getting Telegram ID: {e}")
+    return None
 
+# Initialize telegram_id in session state
 if "telegram_id" not in st.session_state:
     st.session_state.telegram_id = get_telegram_user_id()
+
 # === Database ===
 class Database:
     @staticmethod
@@ -59,23 +61,21 @@ class Database:
     @staticmethod
     def create_order(city, department, phone, cart_items, telegram_id=None):
         order_data = {
-            "telegram_id": telegram_id,  # NULL, якщо None
+            "telegram_id": telegram_id,  # Will be NULL if None
             "status": "pending",
             "city": city,
             "department": department,
             "contact_phone": phone,
+            "payment_method": st.session_state.get("payment_method", "Cash on delivery")
         }
 
-        # Видаляємо None-поля, щоб Supabase не ламався
+        # Remove None values to avoid Supabase errors
         order_data = {k: v for k, v in order_data.items() if v is not None}
 
         order_response = supabase.table("orders").insert(order_data).execute()
-
-        if not order_response.data:
-            raise Exception("Не вдалося створити замовлення")
-
         order_id = order_response.data[0]['id']
 
+        # Insert order items
         order_items = [{
             "order_id": order_id,
             "product_id": item['id'],
@@ -244,33 +244,34 @@ class OrderUI:
     @staticmethod
     def process_order(payment_method, city, warehouse, phone, cart_items, total):
         try:
-            order_id = Database.create_order(city, warehouse, phone, cart_items)
+            # Get Telegram ID if available
+            telegram_id = st.session_state.get("telegram_id")
 
-            # Готуємо дані для відправки в Telegram
-            order_data = {
-                "status": "pending",
-                "order_id": order_id,
-                "total": total,
-                "payment_method": payment_method,
-                "city": city,
-                "warehouse": warehouse,
-                "phone": phone,
-                "items": [{"name": item["name"], "qty": item["qty"], "price": item["price"]} for item in cart_items]
-            }
+            # Create order with telegram_id
+            order_id = Database.create_order(
+                city=city,
+                department=warehouse,
+                phone=phone,
+                cart_items=cart_items,
+                telegram_id=telegram_id  # Pass the ID (could be None)
+            )
 
-            # Відправляємо дані назад у Telegram WebApp
-            if st.query_params.get("tgWebAppStartParam"):
-                st.markdown(f"""
+            # Prepare WebApp closing script
+            if st.session_state.telegram_id:  # Only if came from Telegram
+                close_script = """
                 <script>
-                if (window.Telegram && window.Telegram.WebApp) {{
-                    window.Telegram.WebApp.sendData(JSON.stringify({json.dumps(order_data)}));
+                if (window.Telegram && window.Telegram.WebApp) {
                     window.Telegram.WebApp.close();
-                }}
+                }
                 </script>
-                """, unsafe_allow_html=True)
+                """
+                st.components.v1.html(close_script)
 
-            st.success("Замовлення успішно оформлено! Дякуємо за покупку.")
+            st.success("Order successfully placed!")
             CartManager.clear_cart()
+
+        except Exception as e:
+            st.error(f"Order error: {str(e)}")
 
         except Exception as e:
             st.error(f"Помилка при оформленні замовлення: {str(e)}")
