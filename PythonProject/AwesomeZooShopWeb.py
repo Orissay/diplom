@@ -17,14 +17,16 @@ _config.set_option("server.headless", True)
 
 def get_telegram_user_id():
     try:
-        headers = st.context.headers
-        if headers and "X-Telegram-User-ID" in headers:
-            return int(headers["X-Telegram-User-ID"])
+        # Новый правильный способ получения заголовков
+        if hasattr(st, 'context') and hasattr(st.context, 'headers'):
+            headers = st.context.headers
+            if headers and "X-Telegram-User-ID" in headers:
+                return int(headers["X-Telegram-User-ID"])
     except Exception as e:
-        st.error(f"Error getting Telegram ID: {e}")
+        st.error(f"Ошибка получения Telegram ID: {e}")
     return None
 
-# Initialize telegram_id in session state
+# Инициализация в session_state
 if "telegram_id" not in st.session_state:
     st.session_state.telegram_id = get_telegram_user_id()
 
@@ -59,22 +61,29 @@ class Database:
         return None
 
     @staticmethod
-    def create_order(city, department, phone, cart_items, telegram_id=None):
+    def create_order(city, department, phone, cart_items):
+        # Проверяем, что заказ идет именно из Telegram WebApp
+        if "telegram_id" not in st.session_state or not st.session_state.telegram_id:
+            raise ValueError("Заказ может быть оформлен только через Telegram бота")
+
         order_data = {
-            "telegram_id": telegram_id,  # Will be NULL if None
+            "telegram_id": st.session_state.telegram_id,  # Обязательное поле
             "status": "pending",
             "city": city,
             "department": department,
             "contact_phone": phone,
+            "payment_method": st.session_state.get("payment_method", "Оплата при получении")
         }
 
-        # Remove None values to avoid Supabase errors
-        order_data = {k: v for k, v in order_data.items() if v is not None}
-
+        # Создаем заказ
         order_response = supabase.table("orders").insert(order_data).execute()
+
+        if not order_response.data:
+            raise Exception("Не удалось создать заказ")
+
         order_id = order_response.data[0]['id']
 
-        # Insert order items
+        # Добавляем товары
         order_items = [{
             "order_id": order_id,
             "product_id": item['id'],
@@ -240,40 +249,37 @@ class OrderUI:
             st.session_state.phone_input = cleaned_value
             st.session_state.phone_input_field = cleaned_value
 
-    @staticmethod
-    def process_order(payment_method, city, warehouse, phone, cart_items, total):
-        try:
-            # Get Telegram ID if available
-            telegram_id = st.session_state.get("telegram_id")
+    def process_order():
+        # Проверка WebApp окружения
+        if not st.session_state.get("telegram_id"):
+            st.error("Для оформления заказа используйте Telegram бота")
+            return
 
-            # Create order with telegram_id
+        try:
             order_id = Database.create_order(
-                city=city,
-                department=warehouse,
-                phone=phone,
-                cart_items=cart_items,
-                telegram_id=telegram_id  # Pass the ID (could be None)
+                city=st.session_state.order_data["city"],
+                department=st.session_state.order_data["warehouse"],
+                phone=st.session_state.order_data["phone"],
+                cart_items=CartManager.get()
             )
 
-            # Prepare WebApp closing script
-            if st.session_state.telegram_id:  # Only if came from Telegram
-                close_script = """
-                <script>
-                if (window.Telegram && window.Telegram.WebApp) {
-                    window.Telegram.WebApp.close();
-                }
-                </script>
-                """
-                st.components.v1.html(close_script)
+            # Закрытие WebApp
+            close_script = """
+            <script>
+            if (window.Telegram && window.Telegram.WebApp) {
+                Telegram.WebApp.sendData(JSON.stringify({
+                    status: "success",
+                    order_id: %d
+                }));
+                Telegram.WebApp.close();
+            }
+            </script>
+            """ % order_id
 
-            st.success("Order successfully placed!")
-            CartManager.clear_cart()
-
-        except Exception as e:
-            st.error(f"Order error: {str(e)}")
+            st.components.v1.html(close_script, height=0)
 
         except Exception as e:
-            st.error(f"Помилка при оформленні замовлення: {str(e)}")
+            st.error(f"Ошибка: {str(e)}")
 
 
 # === Cart UI ===
