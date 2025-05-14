@@ -66,7 +66,6 @@ class Database:
             "city": city,
             "department": department,
             "contact_phone": phone,
-            "payment_method": st.session_state.get("payment_method", "Cash on delivery")
         }
 
         # Remove None values to avoid Supabase errors
