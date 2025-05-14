@@ -53,7 +53,6 @@ class Database:
             "city": city,
             "department": department,
             "contact_phone": phone,
-            "created_at": datetime.now().isoformat()
         }
         order_response = supabase.table("orders").insert(order_data).execute()
         order_id = order_response.data[0]['id']
