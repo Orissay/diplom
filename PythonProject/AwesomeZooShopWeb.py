@@ -312,7 +312,6 @@ class CartUI:
 class ProductUI:
     @staticmethod
     def show_product_card(prod):
-        """Отображает карточку товара в списке"""
         pid, name, desc, price, stock, img = prod
 
         with st.container():
@@ -383,54 +382,42 @@ class ProductUI:
             )
 
             if st.button("Детальніше", key=f"view_{pid}", use_container_width=True,
-                        type="primary" if stock > 0 else "secondary"):
+                         type="primary" if stock > 0 else "secondary"):
                 st.session_state.viewing_product = pid
                 st.rerun()
 
     @staticmethod
     def show_product_details(prod):
-        """Отображает детальную страницу товара"""
         pid, name, desc, price, stock, img = prod
 
         if st.button("← Назад", key="back_to_products"):
             st.session_state.viewing_product = None
             st.rerun()
 
-        # Блок с изображением товара
-        col1, col2 = st.columns([1, 2])
-        with col1:
-            try:
-                image_url = img if img else 'https://via.placeholder.com/300?text=No+Image'
-                st.image(image_url, use_container_width=True)
-            except Exception as e:
-                st.error(f"Не вдалося завантажити зображення: {str(e)}")
-                st.image('https://via.placeholder.com/300?text=Image+Error', use_container_width=True)
+        st.image(img, use_container_width=True)
+        st.markdown(f"## {name}")
+        st.markdown(desc)
+        st.markdown(f"**Ціна:** <span style='font-size:1.5rem; color:#e67e22;'>{price} грн</span>",
+                    unsafe_allow_html=True)
 
-        with col2:
-            st.markdown(f"## {name}")
-            st.markdown(desc)
-            st.markdown(f"**Ціна:** <span style='font-size:1.5rem; color:#e67e22;'>{price} грн</span>",
-                       unsafe_allow_html=True)
+        if stock > 0:
+            st.success(f"**Наявність:** {stock} шт")
+        else:
+            st.error("**Наявність:** Немає в наявності")
 
-            if stock > 0:
-                st.success(f"**Наявність:** {stock} шт")
-            else:
-                st.error("**Наявність:** Немає в наявності")
-
-            if stock > 0:
-                if st.button("🛒 Додати до кошика",
-                            key=f"add_{pid}",
-                            use_container_width=True,
-                            type="primary"):
-                    CartManager.add(pid, name, price, img)
-                    st.success(f"Товар '{name}' додано до кошика!")
-                    st.rerun()
-            else:
-                st.button("🛒 Додати до кошика",
-                         key=f"add_disabled_{pid}",
-                         disabled=True,
-                         use_container_width=True)
-
+        if stock > 0:
+            if st.button("🛒 Додати до кошика",
+                         key=f"add_{pid}",
+                         use_container_width=True,
+                         type="primary"):
+                CartManager.add(pid, name, price, img)
+                st.success(f"Товар '{name}' додано до кошика!")
+                st.rerun()
+        else:
+            st.button("🛒 Додати до кошика",
+                      key=f"add_disabled_{pid}",
+                      disabled=True,
+                      use_container_width=True)
 
 
 # === Cart Manager ===
