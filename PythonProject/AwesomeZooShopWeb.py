@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import os
 import json
-from datetime import datetime
+from datetime import datetime, time
 from supabase import create_client, Client
 from streamlit import config as _config
 
@@ -17,14 +17,13 @@ _config.set_option("server.headless", True)
 
 def get_telegram_user_id():
     try:
-        # Новый правильный способ получения заголовков
-        if hasattr(st, 'context') and hasattr(st.context, 'headers'):
-            headers = st.context.headers
-            if headers and "X-Telegram-User-ID" in headers:
-                return int(headers["X-Telegram-User-ID"])
-    except Exception as e:
-        st.error(f"Ошибка получения Telegram ID: {e}")
-    return None
+        ctx = st.runtime.scriptrunner.get_script_run_ctx()
+        if ctx and hasattr(ctx, 'request'):
+            headers = ctx.request.headers
+            if 'X-Telegram-User-ID' in headers:
+                return int(headers['X-Telegram-User-ID'])
+    except:
+        return None
 
 # Инициализация в session_state
 if "telegram_id" not in st.session_state:
@@ -139,9 +138,16 @@ class OrderUI:
             st.rerun()
 
         cart_items = CartManager.get()
+        if not cart_items:
+            st.error("Кошик порожній")
+            time.sleep(2)
+            st.rerun()
+            return
+
         total = sum(item["price"] * item["qty"] for item in cart_items)
         st.write(f"**Сума замовлення:** {total:.2f} грн")
 
+        # Инициализация данных заказа
         if "order_data" not in st.session_state:
             st.session_state.order_data = {
                 "cities": NovaPoshtaAPI.get_cities(),
@@ -159,72 +165,87 @@ class OrderUI:
                 if st.session_state.order_data["warehouses"]:
                     st.session_state.order_data["warehouse"] = st.session_state.order_data["warehouses"][0]
 
-        city = st.selectbox(
-            "Місто",
-            st.session_state.order_data["cities"],
-            index=st.session_state.order_data["cities"].index(st.session_state.order_data["city"])
-            if st.session_state.order_data["city"] in st.session_state.order_data["cities"]
-            else 0,
-            key="city_select"
-        )
-
-        if city != st.session_state.order_data["city"]:
-            st.session_state.order_data["city"] = city
-            st.session_state.order_data["warehouses"] = NovaPoshtaAPI.get_warehouses(city)
-            st.session_state.order_data["warehouse"] = (
-                st.session_state.order_data["warehouses"][0]
-                if st.session_state.order_data["warehouses"]
-                else ""
+        # Форма заказа
+        with st.form("order_form"):
+            city = st.selectbox(
+                "Місто",
+                st.session_state.order_data["cities"],
+                index=st.session_state.order_data["cities"].index(st.session_state.order_data["city"])
+                if st.session_state.order_data["city"] in st.session_state.order_data["cities"]
+                else 0
             )
-            st.rerun()
 
-        if st.session_state.order_data["city"]:
+            if city != st.session_state.order_data["city"]:
+                st.session_state.order_data["city"] = city
+                st.session_state.order_data["warehouses"] = NovaPoshtaAPI.get_warehouses(city)
+                st.rerun()
+
             warehouse = st.selectbox(
                 "Відділення Нової Пошти",
                 st.session_state.order_data["warehouses"],
                 index=st.session_state.order_data["warehouses"].index(st.session_state.order_data["warehouse"])
                 if st.session_state.order_data["warehouse"] in st.session_state.order_data["warehouses"]
-                else 0,
-                key="warehouse_select"
+                else 0
             )
-            st.session_state.order_data["warehouse"] = warehouse
 
-        st.markdown("**Контактний телефон**")
-        if 'phone_input' not in st.session_state:
-            st.session_state.phone_input = "+380"
+            phone = st.text_input(
+                "Контактний телефон",
+                value=st.session_state.order_data["phone"],
+                max_chars=13,
+                placeholder="+380XXXXXXXXX"
+            )
 
-        phone_input = st.text_input(
-            "",
-            value=st.session_state.phone_input,
-            max_chars=13,
-            key="phone_input_field",
-            on_change=OrderUI.clean_phone_input,
-            label_visibility="collapsed",
-            placeholder="+380XXXXXXXXX"
-        )
+            payment_method = st.radio(
+                "Спосіб оплати:",
+                ["Оплата при отриманні", "Переказ за реквізитами"]
+            )
 
-        st.session_state.order_data["phone"] = st.session_state.phone_input
+            submitted = st.form_submit_button("Підтвердити замовлення")
 
-        payment_method = st.radio(
-            "Спосіб оплати:",
-            ["Оплата при отриманні", "Переказ за реквізитами"],
-            index=0 if st.session_state.order_data["payment_method"] == "Оплата при отриманні" else 1
-        )
-        st.session_state.order_data["payment_method"] = payment_method
+            if submitted:
+                # Валидация телефона
+                if len(phone) != 13 or not phone.startswith("+380") or not phone[1:].isdigit():
+                    st.error("Будь ласка, введіть коректний номер телефону у форматі +380XXXXXXXXX")
+                    st.stop()
 
-        if st.button("Підтвердити замовлення", key="confirm_order"):
-            phone = st.session_state.order_data["phone"]
-            if len(phone) != 13 or not phone.startswith("+380") or not phone[1:].isdigit():
-                st.error("Будь ласка, введіть коректний номер телефону у форматі +380XXXXXXXXX")
-            else:
-                OrderUI.process_order(
-                    payment_method,
-                    city,
-                    warehouse,
-                    phone,
-                    cart_items,
-                    total
-                )
+                try:
+                    # Сохраняем данные
+                    st.session_state.order_data.update({
+                        "city": city,
+                        "warehouse": warehouse,
+                        "phone": phone,
+                        "payment_method": payment_method
+                    })
+
+                    # Создаем заказ
+                    order_id = Database.create_order(
+                        city=city,
+                        department=warehouse,
+                        phone=phone,
+                        cart_items=cart_items
+                    )
+
+                    # Успешное оформление
+                    st.success("Замовлення успішно оформлено!")
+
+                    # Закрытие WebApp если это Telegram
+                    if st.session_state.get("telegram_id"):
+                        st.markdown("""
+                        <script>
+                        if (window.Telegram && window.Telegram.WebApp) {
+                            Telegram.WebApp.close();
+                        }
+                        </script>
+                        """, unsafe_allow_html=True)
+
+                    CartManager.clear_cart()
+                    time.sleep(2)
+                    st.session_state.page = "main"
+                    st.rerun()
+
+                except Exception as e:
+                    st.error(f"Помилка при оформленні: {str(e)}")
+                    st.stop()
 
     @staticmethod
     def clean_phone_input():
