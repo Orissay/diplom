@@ -229,8 +229,8 @@ class OrderUI:
                 if st.session_state.order_data["warehouses"]:
                     st.session_state.order_data["warehouse"] = st.session_state.order_data["warehouses"][0]
 
-        # Выносим выбор города за пределы формы
-        city = st.selectbox(
+        # Используем отдельные переменные для формы
+        current_city = st.selectbox(
             "Місто",
             st.session_state.order_data["cities"],
             index=st.session_state.order_data["cities"].index(st.session_state.order_data["city"])
@@ -240,15 +240,15 @@ class OrderUI:
         )
 
         # Обновляем warehouses при изменении города
-        if city != st.session_state.order_data["city"]:
-            st.session_state.order_data["city"] = city
-            st.session_state.order_data["warehouses"] = NovaPoshtaAPI.get_warehouses(city)
+        if current_city != st.session_state.order_data["city"]:
+            st.session_state.order_data["city"] = current_city
+            st.session_state.order_data["warehouses"] = NovaPoshtaAPI.get_warehouses(current_city)
             if st.session_state.order_data["warehouses"]:
                 st.session_state.order_data["warehouse"] = st.session_state.order_data["warehouses"][0]
             st.rerun()
 
         # Форма заказа
-        with st.form("order_form"):
+        with st.form(key="order_form"):
             warehouse = st.selectbox(
                 "Відділення Нової Пошти",
                 st.session_state.order_data["warehouses"],
@@ -290,7 +290,7 @@ class OrderUI:
 
                     # Создаем заказ
                     order_id = Database.create_order(
-                        city=city,
+                        city=current_city,
                         department=warehouse,
                         phone=phone,
                         cart_items=cart_items
@@ -302,12 +302,12 @@ class OrderUI:
                     # Закрытие WebApp если это Telegram
                     if st.session_state.get("telegram_id"):
                         st.markdown("""
-                        <script>
-                        if (window.Telegram && window.Telegram.WebApp) {
-                            Telegram.WebApp.close();
-                        }
-                        </script>
-                        """, unsafe_allow_html=True)
+                            <script>
+                            if (window.Telegram && window.Telegram.WebApp) {
+                                Telegram.WebApp.close();
+                            }
+                            </script>
+                            """, unsafe_allow_html=True)
 
                     CartManager.clear_cart()
                     st.session_state.page = "main"
