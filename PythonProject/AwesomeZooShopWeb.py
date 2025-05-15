@@ -6,8 +6,7 @@ from datetime import datetime, time
 from supabase import create_client, Client
 from streamlit import config as _config
 
-TELEGRAM_BOT_TOKEN = "7244593523:AAGhMM2XuHgKQ0zII5zE0xNSe5mS5-N0vWw"
-TELEGRAM_CHAT_ID = st.session_state.telegram_id  # или другой чат ID, куда отправлять
+
 # Конфигурация Supabase
 SUPABASE_URL = "https://hxowoktqmcgrckptjvnz.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4b3dva3RxbWNncmNrcHRqdm56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcyMDc0MzgsImV4cCI6MjA2Mjc4MzQzOH0.znG6XuvFzHE_iIpl3j79UW7dJORB3UhF-qAHvuSrOiY"
@@ -57,6 +56,9 @@ def verify_webapp():
         3. Используйте интерфейс WebApp
         """)
         st.stop()
+
+TELEGRAM_BOT_TOKEN = "7244593523:AAGhMM2XuHgKQ0zII5zE0xNSe5mS5-N0vWw"
+TELEGRAM_CHAT_ID = st.session_state.telegram_id  # или другой чат ID, куда отправлять
 
 # === Database ===
 class Database:
