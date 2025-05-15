@@ -31,34 +31,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def get_telegram_user():
-    # сначала попробуем из query params
+    # Считываем telegram_id из URL-параметров
     params = st.experimental_get_query_params()
-    init = params.get("initData", [None])[0]
-    if init:
-        try:
-            # initDataUnsafe — небезопасный, но для теста сгодится
-            from urllib import parse
-            decoded = parse.unquote(init)
-            # формат: key1=value1&key2=value2...
-            # найдём user_id
-            for kv in decoded.split("&"):
-                if kv.startswith("user="):
-                    # user=%7B%22id%22%3A12345...%7D
-                    user_obj = json.loads(parse.unquote(kv.split("=",1)[1]))
-                    return int(user_obj.get("id"))
-        except Exception:
-            pass
-
-    # fallback на прежний вариант — заголовки (если вдруг прокидываются)
+    tid = params.get("telegram_id", [None])[0]
     try:
-        if hasattr(st, 'context') and hasattr(st.context, 'headers'):
-            hdrs = st.context.headers
-            if hdrs and "X-Telegram-User-ID" in hdrs:
-                return int(hdrs["X-Telegram-User-ID"])
-    except Exception:
-        pass
-
-    return None
+        return int(tid) if tid else None
+    except:
+        return None
 
 
 if "telegram_id" not in st.session_state:
