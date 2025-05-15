@@ -230,6 +230,15 @@ class OrderUI:
                 if st.session_state.order_data["warehouses"]:
                     st.session_state.order_data["warehouse"] = st.session_state.order_data["warehouses"][0]
 
+        # Обновляем warehouses при изменении города
+        def update_warehouses():
+            st.session_state.order_data["warehouses"] = NovaPoshtaAPI.get_warehouses(
+                st.session_state.order_data["city"]
+            )
+            if st.session_state.order_data["warehouses"]:
+                st.session_state.order_data["warehouse"] = st.session_state.order_data["warehouses"][0]
+            st.rerun()
+
         # Форма заказа
         with st.form("order_form"):
             city = st.selectbox(
@@ -237,32 +246,32 @@ class OrderUI:
                 st.session_state.order_data["cities"],
                 index=st.session_state.order_data["cities"].index(st.session_state.order_data["city"])
                 if st.session_state.order_data["city"] in st.session_state.order_data["cities"]
-                else 0
+                else 0,
+                key="city_select",
+                on_change=update_warehouses
             )
-
-            if city != st.session_state.order_data["city"]:
-                st.session_state.order_data["city"] = city
-                st.session_state.order_data["warehouses"] = NovaPoshtaAPI.get_warehouses(city)
-                st.rerun()
 
             warehouse = st.selectbox(
                 "Відділення Нової Пошти",
                 st.session_state.order_data["warehouses"],
                 index=st.session_state.order_data["warehouses"].index(st.session_state.order_data["warehouse"])
                 if st.session_state.order_data["warehouse"] in st.session_state.order_data["warehouses"]
-                else 0
+                else 0,
+                key="warehouse_select"
             )
 
             phone = st.text_input(
                 "Контактний телефон",
                 value=st.session_state.order_data["phone"],
                 max_chars=13,
-                placeholder="+380XXXXXXXXX"
+                placeholder="+380XXXXXXXXX",
+                key="phone_input"
             )
 
             payment_method = st.radio(
                 "Спосіб оплати:",
-                ["Оплата при отриманні", "Переказ за реквізитами"]
+                ["Оплата при отриманні", "Переказ за реквізитами"],
+                key="payment_method"
             )
 
             submitted = st.form_submit_button("Підтвердити замовлення")
