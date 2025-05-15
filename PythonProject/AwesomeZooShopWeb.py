@@ -15,21 +15,56 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 _config.set_option("theme.base", "light")
 _config.set_option("server.headless", True)
 
+st.markdown("""
+<script>
+  (function() {
+    if (window.Telegram && window.Telegram.WebApp) {
+      const init = Telegram.WebApp.initData;
+      // если ещё нет в URL — добавляем и перезагружаем
+      if (init && !window.location.search.includes("initData=")) {
+        const qs = window.location.search ? window.location.search + "&" : "?";
+        window.location.href = window.location.pathname + qs + "initData=" + encodeURIComponent(init);
+      }
+    }
+  })();
+</script>
+""", unsafe_allow_html=True)
+
 def get_telegram_user():
+    # сначала попробуем из query params
+    params = st.experimental_get_query_params()
+    init = params.get("initData", [None])[0]
+    if init:
+        try:
+            # initDataUnsafe — небезопасный, но для теста сгодится
+            from urllib import parse
+            decoded = parse.unquote(init)
+            # формат: key1=value1&key2=value2...
+            # найдём user_id
+            for kv in decoded.split("&"):
+                if kv.startswith("user="):
+                    # user=%7B%22id%22%3A12345...%7D
+                    user_obj = json.loads(parse.unquote(kv.split("=",1)[1]))
+                    return int(user_obj.get("id"))
+        except Exception:
+            pass
+
+    # fallback на прежний вариант — заголовки (если вдруг прокидываются)
     try:
-        # Актуальный способ получения заголовков
         if hasattr(st, 'context') and hasattr(st.context, 'headers'):
-            headers = st.context.headers
-            if headers and "X-Telegram-User-ID" in headers:
-                return int(headers["X-Telegram-User-ID"])
-    except Exception as e:
-        st.error(f"Ошибка получения Telegram ID: {str(e)}")
+            hdrs = st.context.headers
+            if hdrs and "X-Telegram-User-ID" in hdrs:
+                return int(hdrs["X-Telegram-User-ID"])
+    except Exception:
+        pass
+
     return None
 
-# Инициализация в session_state
+
 if "telegram_id" not in st.session_state:
     st.session_state.telegram_id = get_telegram_user()
     st.session_state.is_webapp = bool(st.session_state.telegram_id)
+
 
 def verify_webapp():
     if not st.session_state.get("is_webapp"):
@@ -158,7 +193,7 @@ class OrderUI:
         if not st.session_state.get("is_webapp"):
             verify_webapp()
             return
-        
+
         st.header("Оформлення замовлення")
 
         if st.button("← На головну", key="back_to_main_from_order"):
