@@ -205,7 +205,6 @@ class OrderUI:
         cart_items = CartManager.get()
         if not cart_items:
             st.error("Кошик порожній")
-            time.sleep(2)
             st.rerun()
             return
 
@@ -230,27 +229,26 @@ class OrderUI:
                 if st.session_state.order_data["warehouses"]:
                     st.session_state.order_data["warehouse"] = st.session_state.order_data["warehouses"][0]
 
+        # Выносим выбор города за пределы формы
+        city = st.selectbox(
+            "Місто",
+            st.session_state.order_data["cities"],
+            index=st.session_state.order_data["cities"].index(st.session_state.order_data["city"])
+            if st.session_state.order_data["city"] in st.session_state.order_data["cities"]
+            else 0,
+            key="city_select"
+        )
+
         # Обновляем warehouses при изменении города
-        def update_warehouses():
-            st.session_state.order_data["warehouses"] = NovaPoshtaAPI.get_warehouses(
-                st.session_state.order_data["city"]
-            )
+        if city != st.session_state.order_data["city"]:
+            st.session_state.order_data["city"] = city
+            st.session_state.order_data["warehouses"] = NovaPoshtaAPI.get_warehouses(city)
             if st.session_state.order_data["warehouses"]:
                 st.session_state.order_data["warehouse"] = st.session_state.order_data["warehouses"][0]
             st.rerun()
 
         # Форма заказа
         with st.form("order_form"):
-            city = st.selectbox(
-                "Місто",
-                st.session_state.order_data["cities"],
-                index=st.session_state.order_data["cities"].index(st.session_state.order_data["city"])
-                if st.session_state.order_data["city"] in st.session_state.order_data["cities"]
-                else 0,
-                key="city_select",
-                on_change=update_warehouses
-            )
-
             warehouse = st.selectbox(
                 "Відділення Нової Пошти",
                 st.session_state.order_data["warehouses"],
@@ -285,7 +283,6 @@ class OrderUI:
                 try:
                     # Сохраняем данные
                     st.session_state.order_data.update({
-                        "city": city,
                         "warehouse": warehouse,
                         "phone": phone,
                         "payment_method": payment_method
@@ -313,7 +310,6 @@ class OrderUI:
                         """, unsafe_allow_html=True)
 
                     CartManager.clear_cart()
-                    time.sleep(2)
                     st.session_state.page = "main"
                     st.rerun()
 
