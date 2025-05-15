@@ -86,6 +86,7 @@ class Database:
                     item['stock'], item['image'])
         return None
 
+
     @staticmethod
     def create_order(city, department, phone, cart_items):
         try:
@@ -182,7 +183,6 @@ class OrderUI:
         cart_items = CartManager.get()
         if not cart_items:
             st.error("Кошик порожній")
-            time.sleep(2)
             st.rerun()
             return
 
@@ -207,39 +207,47 @@ class OrderUI:
                 if st.session_state.order_data["warehouses"]:
                     st.session_state.order_data["warehouse"] = st.session_state.order_data["warehouses"][0]
 
+        # Используем отдельные переменные для формы
+        current_city = st.selectbox(
+            "Місто",
+            st.session_state.order_data["cities"],
+            index=st.session_state.order_data["cities"].index(st.session_state.order_data["city"])
+            if st.session_state.order_data["city"] in st.session_state.order_data["cities"]
+            else 0,
+            key="city_select"
+        )
+
+        # Обновляем warehouses при изменении города
+        if current_city != st.session_state.order_data["city"]:
+            st.session_state.order_data["city"] = current_city
+            st.session_state.order_data["warehouses"] = NovaPoshtaAPI.get_warehouses(current_city)
+            if st.session_state.order_data["warehouses"]:
+                st.session_state.order_data["warehouse"] = st.session_state.order_data["warehouses"][0]
+            st.rerun()
+
         # Форма заказа
-        with st.form("order_form"):
-            city = st.selectbox(
-                "Місто",
-                st.session_state.order_data["cities"],
-                index=st.session_state.order_data["cities"].index(st.session_state.order_data["city"])
-                if st.session_state.order_data["city"] in st.session_state.order_data["cities"]
-                else 0
-            )
-
-            if city != st.session_state.order_data["city"]:
-                st.session_state.order_data["city"] = city
-                st.session_state.order_data["warehouses"] = NovaPoshtaAPI.get_warehouses(city)
-                st.rerun()
-
+        with st.form(key="order_form"):
             warehouse = st.selectbox(
                 "Відділення Нової Пошти",
                 st.session_state.order_data["warehouses"],
                 index=st.session_state.order_data["warehouses"].index(st.session_state.order_data["warehouse"])
                 if st.session_state.order_data["warehouse"] in st.session_state.order_data["warehouses"]
-                else 0
+                else 0,
+                key="warehouse_select"
             )
 
             phone = st.text_input(
                 "Контактний телефон",
                 value=st.session_state.order_data["phone"],
                 max_chars=13,
-                placeholder="+380XXXXXXXXX"
+                placeholder="+380XXXXXXXXX",
+                key="phone_input"
             )
 
             payment_method = st.radio(
                 "Спосіб оплати:",
-                ["Оплата при отриманні", "Переказ за реквізитами"]
+                ["Оплата при отриманні", "Переказ за реквізитами"],
+                key="payment_method"
             )
 
             submitted = st.form_submit_button("Підтвердити замовлення")
@@ -253,7 +261,6 @@ class OrderUI:
                 try:
                     # Сохраняем данные
                     st.session_state.order_data.update({
-                        "city": city,
                         "warehouse": warehouse,
                         "phone": phone,
                         "payment_method": payment_method
@@ -261,7 +268,7 @@ class OrderUI:
 
                     # Создаем заказ
                     order_id = Database.create_order(
-                        city=city,
+                        city=current_city,
                         department=warehouse,
                         phone=phone,
                         cart_items=cart_items
@@ -273,15 +280,14 @@ class OrderUI:
                     # Закрытие WebApp если это Telegram
                     if st.session_state.get("telegram_id"):
                         st.markdown("""
-                        <script>
-                        if (window.Telegram && window.Telegram.WebApp) {
-                            Telegram.WebApp.close();
-                        }
-                        </script>
-                        """, unsafe_allow_html=True)
+                            <script>
+                            if (window.Telegram && window.Telegram.WebApp) {
+                                Telegram.WebApp.close();
+                            }
+                            </script>
+                            """, unsafe_allow_html=True)
 
                     CartManager.clear_cart()
-                    time.sleep(2)
                     st.session_state.page = "main"
                     st.rerun()
 
