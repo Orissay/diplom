@@ -6,6 +6,8 @@ from datetime import datetime, time
 from supabase import create_client, Client
 from streamlit import config as _config
 
+TELEGRAM_BOT_TOKEN = "7244593523:AAGhMM2XuHgKQ0zII5zE0xNSe5mS5-N0vWw"
+TELEGRAM_CHAT_ID = st.session_state.telegram_id  # или другой чат ID, куда отправлять
 # Конфигурация Supabase
 SUPABASE_URL = "https://hxowoktqmcgrckptjvnz.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4b3dva3RxbWNncmNrcHRqdm56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcyMDc0MzgsImV4cCI6MjA2Mjc4MzQzOH0.znG6XuvFzHE_iIpl3j79UW7dJORB3UhF-qAHvuSrOiY"
@@ -32,7 +34,7 @@ st.markdown("""
 
 def get_telegram_user():
     # Считываем telegram_id из URL-параметров
-    params = st.query_params
+    params = st.query_params()
     tid = params.get("telegram_id", [None])[0]
     try:
         return int(tid) if tid else None
@@ -131,6 +133,25 @@ class Database:
             st.error(f"Ошибка создания заказа: {str(e)}")
             st.stop()
 
+    def send_order_to_telegram(order_id, city, warehouse, phone, cart_items):
+        message = f"Новий замовлення #{order_id}\n"
+        message += f"Місто: {city}\nВідділення: {warehouse}\nТелефон: {phone}\n\n"
+        message += "Товари:\n"
+        for item in cart_items:
+            message += f"- {item['name']} x {item['qty']} шт. по {item['price']} грн\n"
+        total = sum(item['qty'] * item['price'] for item in cart_items)
+        message += f"\nВсього: {total:.2f} грн"
+
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": TELEGRAM_CHAT_ID,
+            "text": message,
+            "parse_mode": "HTML"
+        }
+        r = requests.post(url, data=payload)
+        if not r.ok:
+            st.error(f"Помилка відправки повідомлення в Telegram: {r.text}")
+
 
 # === Nova Poshta API ===
 class NovaPoshtaAPI:
@@ -182,6 +203,7 @@ class OrderUI:
         cart_items = CartManager.get()
         if not cart_items:
             st.error("Кошик порожній")
+            time.sleep(2)
             st.rerun()
             return
 
@@ -280,6 +302,7 @@ class OrderUI:
                         """, unsafe_allow_html=True)
 
                     CartManager.clear_cart()
+                    time.sleep(2)
                     st.session_state.page = "main"
                     st.rerun()
 
