@@ -32,7 +32,7 @@ st.markdown("""
 
 def get_telegram_user():
     # Считываем telegram_id из URL-параметров
-    params = st.query_params()
+    params = st.query_params
     tid = params.get("telegram_id", [None])[0]
     try:
         return int(tid) if tid else None
