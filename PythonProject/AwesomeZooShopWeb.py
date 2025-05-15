@@ -15,19 +15,28 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 _config.set_option("theme.base", "light")
 _config.set_option("server.headless", True)
 
-def get_telegram_user_id():
+def get_telegram_user():
     try:
-        ctx = st.runtime.scriptrunner.get_script_run_ctx()
-        if ctx and hasattr(ctx, 'request'):
-            headers = ctx.request.headers
-            if 'X-Telegram-User-ID' in headers:
-                return int(headers['X-Telegram-User-ID'])
+        # Способ для Streamlit версии > 1.16
+        from streamlit.web.server.websocket_headers import _get_websocket_headers
+        headers = _get_websocket_headers()
+        if headers and "X-Telegram-User-ID" in headers:
+            return int(headers["X-Telegram-User-ID"])
     except:
-        return None
+        try:
+            # Альтернативный способ для более новых версий
+            ctx = st.runtime.scriptrunner.get_script_run_ctx()
+            if ctx and hasattr(ctx, 'request'):
+                headers = ctx.request.headers
+                if 'X-Telegram-User-ID' in headers:
+                    return int(headers['X-Telegram-User-ID'])
+        except:
+            pass
+    return None
 
-# Инициализация в session_state
+# Инициализация telegram_id
 if "telegram_id" not in st.session_state:
-    st.session_state.telegram_id = get_telegram_user_id()
+    st.session_state.telegram_id = get_telegram_user()
 
 # === Database ===
 class Database:
