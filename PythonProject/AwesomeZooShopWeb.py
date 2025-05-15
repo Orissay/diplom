@@ -93,6 +93,18 @@ class Database:
     @staticmethod
     def create_order(city, department, phone, cart_items):
         try:
+            # Проверяем и создаем пользователя если нужно
+            user_response = supabase.table("users").select("*").eq("telegram_id",
+                                                                   st.session_state.telegram_id).execute()
+
+            if not user_response.data:
+                # Если пользователя нет - создаем
+                supabase.table("users").insert({
+                    "telegram_id": st.session_state.telegram_id,
+                    "created_at": datetime.now().isoformat(),
+                    "phone": phone  # Сохраняем телефон из заказа
+                }).execute()
+        try:
             # Проверяем WebApp контекст
             if not st.session_state.get("is_webapp"):
                 raise PermissionError("Доступ запрещён: не WebApp контекст")
