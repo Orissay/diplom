@@ -86,7 +86,6 @@ class Database:
                     item['stock'], item['image'])
         return None
 
-
     @staticmethod
     def create_order(city, department, phone, cart_items):
         try:
@@ -94,9 +93,20 @@ class Database:
             if not st.session_state.get("is_webapp"):
                 raise PermissionError("Доступ запрещён: не WebApp контекст")
 
+            telegram_id = st.session_state.telegram_id
+
+            # Проверяем существование пользователя и добавляем при необходимости
+            user_check = supabase.table("users").select("*").eq("telegram_id", telegram_id).execute()
+            if not user_check.data:
+                # Добавляем нового пользователя с минимальными данными
+                supabase.table("users").insert({
+                    "telegram_id": telegram_id,
+                    "username": f"user_{telegram_id}"  # или можно оставить None
+                }).execute()
+
             # Создаём заказ
             order_data = {
-                "telegram_id": st.session_state.telegram_id,
+                "telegram_id": telegram_id,
                 "status": "pending",
                 "city": city,
                 "department": department,
