@@ -182,7 +182,6 @@ class OrderUI:
         cart_items = CartManager.get()
         if not cart_items:
             st.error("Кошик порожній")
-            time.sleep(2)
             st.rerun()
             return
 
@@ -281,7 +280,6 @@ class OrderUI:
                         """, unsafe_allow_html=True)
 
                     CartManager.clear_cart()
-                    time.sleep(2)
                     st.session_state.page = "main"
                     st.rerun()
 
