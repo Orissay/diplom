@@ -6,7 +6,6 @@ from datetime import datetime, time
 from supabase import create_client, Client
 from streamlit import config as _config
 
-
 # Конфигурация Supabase
 SUPABASE_URL = "https://hxowoktqmcgrckptjvnz.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4b3dva3RxbWNncmNrcHRqdm56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcyMDc0MzgsImV4cCI6MjA2Mjc4MzQzOH0.znG6XuvFzHE_iIpl3j79UW7dJORB3UhF-qAHvuSrOiY"
@@ -33,7 +32,7 @@ st.markdown("""
 
 def get_telegram_user():
     # Считываем telegram_id из URL-параметров
-    params = st.query_params
+    params = st.query_params()
     tid = params.get("telegram_id", [None])[0]
     try:
         return int(tid) if tid else None
@@ -56,9 +55,6 @@ def verify_webapp():
         3. Используйте интерфейс WebApp
         """)
         st.stop()
-
-TELEGRAM_BOT_TOKEN = "7244593523:AAGhMM2XuHgKQ0zII5zE0xNSe5mS5-N0vWw"
-TELEGRAM_CHAT_ID = st.session_state.telegram_id  # или другой чат ID, куда отправлять
 
 # === Database ===
 class Database:
@@ -92,18 +88,6 @@ class Database:
 
     @staticmethod
     def create_order(city, department, phone, cart_items):
-        try:
-            # Проверяем и создаем пользователя если нужно
-            user_response = supabase.table("users").select("*").eq("telegram_id",
-                                                                   st.session_state.telegram_id).execute()
-
-            if not user_response.data:
-                # Если пользователя нет - создаем
-                supabase.table("users").insert({
-                    "telegram_id": st.session_state.telegram_id,
-                    "created_at": datetime.now().isoformat(),
-                    "phone": phone  # Сохраняем телефон из заказа
-                }).execute()
         try:
             # Проверяем WebApp контекст
             if not st.session_state.get("is_webapp"):
@@ -146,26 +130,8 @@ class Database:
         except Exception as e:
             st.error(f"Ошибка создания заказа: {str(e)}")
             st.stop()
-
-    def send_order_to_telegram(order_id, city, warehouse, phone, cart_items):
-        message = f"Новий замовлення #{order_id}\n"
-        message += f"Місто: {city}\nВідділення: {warehouse}\nТелефон: {phone}\n\n"
-        message += "Товари:\n"
-        for item in cart_items:
-            message += f"- {item['name']} x {item['qty']} шт. по {item['price']} грн\n"
-        total = sum(item['qty'] * item['price'] for item in cart_items)
-        message += f"\nВсього: {total:.2f} грн"
-
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {
-            "chat_id": TELEGRAM_CHAT_ID,
-            "text": message,
-            "parse_mode": "HTML"
-        }
-        r = requests.post(url, data=payload)
-        if not r.ok:
-            st.error(f"Помилка відправки повідомлення в Telegram: {r.text}")
-
+    
+    
 
 # === Nova Poshta API ===
 class NovaPoshtaAPI:
@@ -217,6 +183,7 @@ class OrderUI:
         cart_items = CartManager.get()
         if not cart_items:
             st.error("Кошик порожній")
+            time.sleep(2)
             st.rerun()
             return
 
@@ -241,47 +208,39 @@ class OrderUI:
                 if st.session_state.order_data["warehouses"]:
                     st.session_state.order_data["warehouse"] = st.session_state.order_data["warehouses"][0]
 
-        # Используем отдельные переменные для формы
-        current_city = st.selectbox(
-            "Місто",
-            st.session_state.order_data["cities"],
-            index=st.session_state.order_data["cities"].index(st.session_state.order_data["city"])
-            if st.session_state.order_data["city"] in st.session_state.order_data["cities"]
-            else 0,
-            key="city_select"
-        )
-
-        # Обновляем warehouses при изменении города
-        if current_city != st.session_state.order_data["city"]:
-            st.session_state.order_data["city"] = current_city
-            st.session_state.order_data["warehouses"] = NovaPoshtaAPI.get_warehouses(current_city)
-            if st.session_state.order_data["warehouses"]:
-                st.session_state.order_data["warehouse"] = st.session_state.order_data["warehouses"][0]
-            st.rerun()
-
         # Форма заказа
-        with st.form(key="order_form"):
+        with st.form("order_form"):
+            city = st.selectbox(
+                "Місто",
+                st.session_state.order_data["cities"],
+                index=st.session_state.order_data["cities"].index(st.session_state.order_data["city"])
+                if st.session_state.order_data["city"] in st.session_state.order_data["cities"]
+                else 0
+            )
+
+            if city != st.session_state.order_data["city"]:
+                st.session_state.order_data["city"] = city
+                st.session_state.order_data["warehouses"] = NovaPoshtaAPI.get_warehouses(city)
+                st.rerun()
+
             warehouse = st.selectbox(
                 "Відділення Нової Пошти",
                 st.session_state.order_data["warehouses"],
                 index=st.session_state.order_data["warehouses"].index(st.session_state.order_data["warehouse"])
                 if st.session_state.order_data["warehouse"] in st.session_state.order_data["warehouses"]
-                else 0,
-                key="warehouse_select"
+                else 0
             )
 
             phone = st.text_input(
                 "Контактний телефон",
                 value=st.session_state.order_data["phone"],
                 max_chars=13,
-                placeholder="+380XXXXXXXXX",
-                key="phone_input"
+                placeholder="+380XXXXXXXXX"
             )
 
             payment_method = st.radio(
                 "Спосіб оплати:",
-                ["Оплата при отриманні", "Переказ за реквізитами"],
-                key="payment_method"
+                ["Оплата при отриманні", "Переказ за реквізитами"]
             )
 
             submitted = st.form_submit_button("Підтвердити замовлення")
@@ -295,6 +254,7 @@ class OrderUI:
                 try:
                     # Сохраняем данные
                     st.session_state.order_data.update({
+                        "city": city,
                         "warehouse": warehouse,
                         "phone": phone,
                         "payment_method": payment_method
@@ -302,7 +262,7 @@ class OrderUI:
 
                     # Создаем заказ
                     order_id = Database.create_order(
-                        city=current_city,
+                        city=city,
                         department=warehouse,
                         phone=phone,
                         cart_items=cart_items
@@ -314,14 +274,15 @@ class OrderUI:
                     # Закрытие WebApp если это Telegram
                     if st.session_state.get("telegram_id"):
                         st.markdown("""
-                            <script>
-                            if (window.Telegram && window.Telegram.WebApp) {
-                                Telegram.WebApp.close();
-                            }
-                            </script>
-                            """, unsafe_allow_html=True)
+                        <script>
+                        if (window.Telegram && window.Telegram.WebApp) {
+                            Telegram.WebApp.close();
+                        }
+                        </script>
+                        """, unsafe_allow_html=True)
 
                     CartManager.clear_cart()
+                    time.sleep(2)
                     st.session_state.page = "main"
                     st.rerun()
 
