@@ -31,11 +31,18 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def get_telegram_user():
-    # Считываем telegram_id из URL-параметров
     params = st.query_params
-    tid = params.get("telegram_id", [None])[0]
+    tid = params.get("telegram_id")
+    if not tid:
+        return None
     try:
-        return int(tid) if tid else None
+        tid = int(tid)
+        # Дополнительная проверка через WebApp (если доступно)
+        if st.session_state.get("is_webapp") and hasattr(st.experimental_user, "id"):
+            if tid != st.experimental_user.id:
+                st.error("Несовпадение Telegram ID.")
+                return None
+        return tid
     except:
         return None
 
@@ -86,50 +93,31 @@ class Database:
                     item['stock'], item['image'])
         return None
 
-
     @staticmethod
     def create_order(city, department, phone, cart_items):
         try:
-            # Проверяем WebApp контекст
-            if not st.session_state.get("is_webapp"):
-                raise PermissionError("Доступ запрещён: не WebApp контекст")
+            telegram_id = st.session_state.telegram_id
+            if not telegram_id:
+                raise PermissionError("Требуется авторизация в Telegram.")
 
-            # Создаём заказ
+            # Проверяем, есть ли пользователь в БД
+            user = supabase.table("users").select("*").eq("telegram_id", telegram_id).execute()
+            if not user.data:
+                raise ValueError("Пользователь не зарегистрирован. Начните с /start в боте.")
+
+            # Создаём заказ (остальной код без изменений)
             order_data = {
-                "telegram_id": st.session_state.telegram_id,
+                "telegram_id": telegram_id,
                 "status": "pending",
                 "city": city,
                 "department": department,
                 "contact_phone": phone,
             }
-
             response = supabase.table("orders").insert(order_data).execute()
-            order_id = response.data[0]['id']
-
-            # Добавляем товары
-            order_items = [{
-                "order_id": order_id,
-                "product_id": item['id'],
-                "quantity": item['qty'],
-                "price": item['price']
-            } for item in cart_items]
-
-            supabase.table("order_items").insert(order_items).execute()
-
-            # Закрываем WebApp
-            if st.session_state.is_webapp:
-                st.markdown("""
-                <script>
-                if (window.Telegram && window.Telegram.WebApp) {
-                    Telegram.WebApp.close();
-                }
-                </script>
-                """, unsafe_allow_html=True)
-
-            return order_id
+            return response.data[0]['id']
 
         except Exception as e:
-            st.error(f"Ошибка создания заказа: {str(e)}")
+            st.error(f"Ошибка: {str(e)}")
             st.stop()
 
 
