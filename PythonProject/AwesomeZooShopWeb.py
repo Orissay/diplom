@@ -17,26 +17,30 @@ _config.set_option("server.headless", True)
 
 def get_telegram_user():
     try:
-        # Способ для Streamlit версии > 1.16
-        from streamlit.web.server.websocket_headers import _get_websocket_headers
-        headers = _get_websocket_headers()
-        if headers and "X-Telegram-User-ID" in headers:
-            return int(headers["X-Telegram-User-ID"])
-    except:
-        try:
-            # Альтернативный способ для более новых версий
-            ctx = st.runtime.scriptrunner.get_script_run_ctx()
-            if ctx and hasattr(ctx, 'request'):
-                headers = ctx.request.headers
-                if 'X-Telegram-User-ID' in headers:
-                    return int(headers['X-Telegram-User-ID'])
-        except:
-            pass
+        # Актуальный способ получения заголовков
+        if hasattr(st, 'context') and hasattr(st.context, 'headers'):
+            headers = st.context.headers
+            if headers and "X-Telegram-User-ID" in headers:
+                return int(headers["X-Telegram-User-ID"])
+    except Exception as e:
+        st.error(f"Ошибка получения Telegram ID: {str(e)}")
     return None
 
-# Инициализация telegram_id
+# Инициализация в session_state
 if "telegram_id" not in st.session_state:
     st.session_state.telegram_id = get_telegram_user()
+    st.session_state.is_webapp = bool(st.session_state.telegram_id)
+
+def verify_webapp():
+    if not st.session_state.get("is_webapp"):
+        st.error("""
+        ## Доступ только через Telegram бота!
+        Для оформления заказа:
+        1. Вернитесь в чат с ботом
+        2. Нажмите кнопку **'Магазин'**
+        3. Используйте интерфейс WebApp
+        """)
+        st.stop()
 
 # === Database ===
 class Database:
@@ -70,37 +74,48 @@ class Database:
 
     @staticmethod
     def create_order(city, department, phone, cart_items):
-        # Проверяем, что заказ идет именно из Telegram WebApp
-        if "telegram_id" not in st.session_state or not st.session_state.telegram_id:
-            raise ValueError("Заказ может быть оформлен только через Telegram бота")
+        try:
+            # Проверяем WebApp контекст
+            if not st.session_state.get("is_webapp"):
+                raise PermissionError("Доступ запрещён: не WebApp контекст")
 
-        order_data = {
-            "telegram_id": st.session_state.telegram_id,  # Обязательное поле
-            "status": "pending",
-            "city": city,
-            "department": department,
-            "contact_phone": phone,
-            "payment_method": st.session_state.get("payment_method", "Оплата при получении")
-        }
+            # Создаём заказ
+            order_data = {
+                "telegram_id": st.session_state.telegram_id,
+                "status": "pending",
+                "city": city,
+                "department": department,
+                "contact_phone": phone,
+            }
 
-        # Создаем заказ
-        order_response = supabase.table("orders").insert(order_data).execute()
+            response = supabase.table("orders").insert(order_data).execute()
+            order_id = response.data[0]['id']
 
-        if not order_response.data:
-            raise Exception("Не удалось создать заказ")
+            # Добавляем товары
+            order_items = [{
+                "order_id": order_id,
+                "product_id": item['id'],
+                "quantity": item['qty'],
+                "price": item['price']
+            } for item in cart_items]
 
-        order_id = order_response.data[0]['id']
+            supabase.table("order_items").insert(order_items).execute()
 
-        # Добавляем товары
-        order_items = [{
-            "order_id": order_id,
-            "product_id": item['id'],
-            "quantity": item['qty'],
-            "price": item['price']
-        } for item in cart_items]
+            # Закрываем WebApp
+            if st.session_state.is_webapp:
+                st.markdown("""
+                <script>
+                if (window.Telegram && window.Telegram.WebApp) {
+                    Telegram.WebApp.close();
+                }
+                </script>
+                """, unsafe_allow_html=True)
 
-        supabase.table("order_items").insert(order_items).execute()
-        return order_id
+            return order_id
+
+        except Exception as e:
+            st.error(f"Ошибка создания заказа: {str(e)}")
+            st.stop()
 
 
 # === Nova Poshta API ===
@@ -140,6 +155,10 @@ class NovaPoshtaAPI:
 class OrderUI:
     @staticmethod
     def show_order_form():
+        if not st.session_state.get("is_webapp"):
+            verify_webapp()
+            return
+        
         st.header("Оформлення замовлення")
 
         if st.button("← На головну", key="back_to_main_from_order"):
@@ -532,6 +551,7 @@ class CartManager:
 
 
 class MainUI:
+    verify_webapp()
     @staticmethod
     def show_header():
         # Создаем 3 колонки: кнопка дома, поиск, корзина
