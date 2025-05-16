@@ -325,6 +325,7 @@ class OrderUI:
                         department=warehouse,
                         phone=phone,
                         cart_items=cart_items
+                        payment_method = payment_method
                     )
 
                     # Успешное оформление
