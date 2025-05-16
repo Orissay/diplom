@@ -57,7 +57,7 @@ BOT_API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 def send_order_to_bot(telegram_id, order_id, order_data):
     try:
-        # Формируем сообщение на сайте
+        # Формируем сообщение
         items_text = "\n".join(
             f"▫ {item['name']} × {item['qty']} = {item['price'] * item['qty']:.2f} грн"
             for item in order_data["cart_items"]
@@ -80,15 +80,19 @@ def send_order_to_bot(telegram_id, order_id, order_data):
         if order_data['payment_method'] == 'По реквизитам':
             message += "\n\n💳 *Реквизиты для оплаты:*\nБанк: ПриватБанк\nКарта: 1234 5678 9012 3456"
 
-        # Отправляем через Telegram API
-        requests.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+        # Отправляем сообщение
+        response = requests.post(
+            f"{BOT_API_URL}/sendMessage",
             json={
                 'chat_id': telegram_id,
                 'text': message,
                 'parse_mode': 'Markdown'
             }
         )
+
+        # Проверяем ответ от Telegram API
+        if response.status_code != 200:
+            print(f"Ошибка отправки сообщения: {response.text}")
 
     except Exception as e:
         print(f"Error sending order to bot: {e}")
@@ -141,7 +145,8 @@ class Database:
             if not telegram_id:
                 raise PermissionError("Потрібна авторизація в Telegram.")
 
-            print(f"Дані для замовлення: {telegram_id}, {city}, {department}, {phone}, {payment_method}")
+            # Рассчитываем общую сумму
+            total = sum(item["price"] * item["qty"] for item in cart_items)
 
             order_data = {
                 "telegram_id": telegram_id,
@@ -149,19 +154,19 @@ class Database:
                 "city": city,
                 "department": department,
                 "contact_phone": phone,
-                "payment_method": payment_method
+                "payment_method": payment_method,
+                "total": total
             }
 
-            print("Дані замовлення перед відправкою:", json.dumps(order_data, indent=2, ensure_ascii=False))
+            # Создаем заказ в базе данных
             response = supabase.table("orders").insert(order_data).execute()
 
             if not response.data:
-                print("Помилка: Supabase не повернув дані створеного замовлення")
                 raise ValueError("Помилка створення замовлення")
 
             order_id = response.data[0]['id']
-            print(f"Замовлення успішно створене, ID: {order_id}")
 
+            # Добавляем товары заказа
             for item in cart_items:
                 item_data = {
                     "order_id": order_id,
@@ -171,27 +176,19 @@ class Database:
                 }
                 supabase.table("order_items").insert(item_data).execute()
 
-            # Формуємо повідомлення
-            items_text = "\n".join(
-                [f"• {item['name']} x{item['qty']} — {item['price']}₴" for item in cart_items]
+            # Отправляем уведомление в бот
+            send_order_to_bot(
+                telegram_id=telegram_id,
+                order_id=order_id,
+                order_data={
+                    "cart_items": cart_items,
+                    "total": total,
+                    "city": city,
+                    "department": department,
+                    "phone": phone,
+                    "payment_method": payment_method
+                }
             )
-            message_text = (
-                f"✅ *Ваше замовлення №{order_id} прийнято!*\n\n"
-                f"📦 Ми скоро його обробимо та надішлемо на:\n"
-                f"🏙️ Місто: {city}\n"
-                f"🏤 Відділення: {department}\n"
-                f"📞 Телефон: {phone}\n"
-                f"💳 Спосіб оплати: {payment_method}\n\n"
-                f"🛒 *Товари:*\n{items_text}\n\n"
-                f"Дякуємо за покупку!"
-            )
-
-            # Надсилаємо повідомлення в Telegram
-            requests.post(BOT_API_URL, json={
-                "chat_id": telegram_id,
-                "text": message_text,
-                "parse_mode": "Markdown"
-            })
 
             return order_id
 
