@@ -139,36 +139,29 @@ class Database:
         try:
             telegram_id = st.session_state.telegram_id
             if not telegram_id:
-                raise PermissionError("Требуется авторизация в Telegram.")
+                raise PermissionError("Потрібна авторизація в Telegram.")
 
-            # Проверка данных перед записью
-            print(
-                f"Данные для заказа: {telegram_id}, {city}, {department}, {phone}, {payment_method}")  # Отладочный вывод
+            print(f"Дані для замовлення: {telegram_id}, {city}, {department}, {phone}, {payment_method}")
 
-            # Создаём заказ
             order_data = {
                 "telegram_id": telegram_id,
                 "status": "pending",
                 "city": city,
                 "department": department,
                 "contact_phone": phone,
-                "payment_method": payment_method  # Важно: имя колонки должно точно совпадать с БД
+                "payment_method": payment_method
             }
 
-            # Отладочный вывод
-            print("Данные заказа перед отправкой:", json.dumps(order_data, indent=2, ensure_ascii=False))
-
+            print("Дані замовлення перед відправкою:", json.dumps(order_data, indent=2, ensure_ascii=False))
             response = supabase.table("orders").insert(order_data).execute()
 
-            # Проверяем ответ от Supabase
             if not response.data:
-                print("Ошибка: Supabase не вернул данные созданного заказа")
-                raise ValueError("Ошибка создания заказа")
+                print("Помилка: Supabase не повернув дані створеного замовлення")
+                raise ValueError("Помилка створення замовлення")
 
             order_id = response.data[0]['id']
-            print(f"Заказ успешно создан, ID: {order_id}")
+            print(f"Замовлення успішно створене, ID: {order_id}")
 
-            # Добавляем товары
             for item in cart_items:
                 item_data = {
                     "order_id": order_id,
@@ -178,11 +171,33 @@ class Database:
                 }
                 supabase.table("order_items").insert(item_data).execute()
 
+            # Формуємо повідомлення
+            items_text = "\n".join(
+                [f"• {item['title']} x{item['qty']} — {item['price']}₴" for item in cart_items]
+            )
+            message_text = (
+                f"✅ *Ваше замовлення №{order_id} прийнято!*\n\n"
+                f"📦 Ми скоро його обробимо та надішлемо на:\n"
+                f"🏙️ Місто: {city}\n"
+                f"🏤 Відділення: {department}\n"
+                f"📞 Телефон: {phone}\n"
+                f"💳 Спосіб оплати: {payment_method}\n\n"
+                f"🛒 *Товари:*\n{items_text}\n\n"
+                f"Дякуємо за покупку!"
+            )
+
+            # Надсилаємо повідомлення в Telegram
+            requests.post(BOT_API_URL, json={
+                "chat_id": telegram_id,
+                "text": message_text,
+                "parse_mode": "Markdown"
+            })
+
             return order_id
 
         except Exception as e:
-            print(f"Критическая ошибка при создании заказа: {str(e)}")
-            st.error(f"Ошибка создания заказа: {str(e)}")
+            print(f"Критична помилка при створенні замовлення: {str(e)}")
+            st.error(f"Помилка створення замовлення: {str(e)}")
             st.stop()
 
 
