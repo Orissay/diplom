@@ -51,6 +51,45 @@ if "telegram_id" not in st.session_state:
     st.session_state.telegram_id = get_telegram_user()
     st.session_state.is_webapp = bool(st.session_state.telegram_id)
 
+BOT_TOKEN = "7244593523:AAGhMM2XuHgKQ0zII5zE0xNSe5mS5-N0vWw"
+BOT_API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
+
+
+def send_order_to_bot(telegram_id, order_id, order_data):
+    try:
+        items_text = "\n".join(
+            f"▫ {item['name']} × {item['qty']} = {item['price'] * item['qty']:.2f} грн"
+            for item in order_data["cart_items"]
+        )
+
+        message = f"""
+✅ *Нове замовлення #{order_id}*
+
+🛒 *Товари:*
+{items_text}
+
+💰 *Сума:* {order_data['total']:.2f} грн
+📍 *Місто:* {order_data['city']}
+📦 *Відділення:* {order_data['department']}
+📞 *Телефон:* {order_data['phone']}
+"""
+
+        # Получаем данные о продуктах из БД для более полной информации
+        products = []
+        for item in order_data["cart_items"]:
+            product = Database.get_product(item["id"])
+            if product:
+                products.append((product[1], item["qty"], product[3]))
+
+        # Отправляем сообщение через API Telegram
+        requests.post(f"{BOT_API_URL}/sendMessage", json={
+            'chat_id': telegram_id,
+            'text': message,
+            'parse_mode': 'Markdown'
+        })
+
+    except Exception as e:
+        print(f"Error sending order to bot: {e}")
 
 def verify_webapp():
     if not st.session_state.get("is_webapp"):
@@ -105,7 +144,7 @@ class Database:
             if not user.data:
                 raise ValueError("Пользователь не зарегистрирован. Начните с /start в боте.")
 
-            # Создаём заказ (остальной код без изменений)
+            # Создаём заказ
             order_data = {
                 "telegram_id": telegram_id,
                 "status": "pending",
@@ -114,7 +153,31 @@ class Database:
                 "contact_phone": phone,
             }
             response = supabase.table("orders").insert(order_data).execute()
-            return response.data[0]['id']
+            order_id = response.data[0]['id']
+
+            # Добавляем товары в заказ
+            for item in cart_items:
+                supabase.table("order_items").insert({
+                    "order_id": order_id,
+                    "product_id": item["id"],
+                    "quantity": item["qty"],
+                    "price": item["price"]
+                }).execute()
+
+            # Отправляем уведомление в бота
+            send_order_to_bot(
+                telegram_id,
+                order_id,
+                {
+                    "cart_items": cart_items,
+                    "total": sum(item["price"] * item["qty"] for item in cart_items),
+                    "city": city,
+                    "department": department,
+                    "phone": phone
+                }
+            )
+
+            return order_id
 
         except Exception as e:
             st.error(f"Ошибка: {str(e)}")
