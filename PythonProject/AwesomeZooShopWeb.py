@@ -72,16 +72,9 @@ def send_order_to_bot(telegram_id, order_id, order_data):
 📍 *Місто:* {order_data['city']}
 📦 *Відділення:* {order_data['department']}
 📞 *Телефон:* {order_data['phone']}
+💳 *Спосіб оплати:* {order_data['payment_method']}
 """
 
-        # Получаем данные о продуктах из БД для более полной информации
-        products = []
-        for item in order_data["cart_items"]:
-            product = Database.get_product(item["id"])
-            if product:
-                products.append((product[1], item["qty"], product[3]))
-
-        # Отправляем сообщение через API Telegram
         requests.post(f"{BOT_API_URL}/sendMessage", json={
             'chat_id': telegram_id,
             'text': message,
@@ -139,50 +132,48 @@ class Database:
             if not telegram_id:
                 raise PermissionError("Требуется авторизация в Telegram.")
 
-            # Проверяем, есть ли пользователь в БД
-            user = supabase.table("users").select("*").eq("telegram_id", telegram_id).execute()
-            if not user.data:
-                raise ValueError("Пользователь не зарегистрирован. Начните с /start в боте.")
+            # Проверка данных перед записью
+            print(
+                f"Данные для заказа: {telegram_id}, {city}, {department}, {phone}, {payment_method}")  # Отладочный вывод
 
-            # Создаём заказ с указанием способа оплаты
+            # Создаём заказ
             order_data = {
                 "telegram_id": telegram_id,
                 "status": "pending",
                 "city": city,
                 "department": department,
                 "contact_phone": phone,
-                "payment_method": payment_method  # Добавляем способ оплаты
+                "payment_method": payment_method  # Важно: имя колонки должно точно совпадать с БД
             }
-            response = supabase.table("orders").insert(order_data).execute()
-            order_id = response.data[0]['id']
 
-            # Добавляем товары в заказ
+            # Отладочный вывод
+            print("Данные заказа перед отправкой:", json.dumps(order_data, indent=2, ensure_ascii=False))
+
+            response = supabase.table("orders").insert(order_data).execute()
+
+            # Проверяем ответ от Supabase
+            if not response.data:
+                print("Ошибка: Supabase не вернул данные созданного заказа")
+                raise ValueError("Ошибка создания заказа")
+
+            order_id = response.data[0]['id']
+            print(f"Заказ успешно создан, ID: {order_id}")
+
+            # Добавляем товары
             for item in cart_items:
-                supabase.table("order_items").insert({
+                item_data = {
                     "order_id": order_id,
                     "product_id": item["id"],
                     "quantity": item["qty"],
                     "price": item["price"]
-                }).execute()
-
-            # Отправляем уведомление в бота
-            send_order_to_bot(
-                telegram_id,
-                order_id,
-                {
-                    "cart_items": cart_items,
-                    "total": sum(item["price"] * item["qty"] for item in cart_items),
-                    "city": city,
-                    "department": department,
-                    "phone": phone,
-                    "payment_method": payment_method  # Добавляем в уведомление
                 }
-            )
+                supabase.table("order_items").insert(item_data).execute()
 
             return order_id
 
         except Exception as e:
-            st.error(f"Ошибка: {str(e)}")
+            print(f"Критическая ошибка при создании заказа: {str(e)}")
+            st.error(f"Ошибка создания заказа: {str(e)}")
             st.stop()
 
 
@@ -324,8 +315,8 @@ class OrderUI:
                         city=current_city,
                         department=warehouse,
                         phone=phone,
-                        cart_items=cart_items
-                        payment_method = payment_method
+                        cart_items=cart_items,
+                        payment_method=payment_method
                     )
 
                     # Успешное оформление
