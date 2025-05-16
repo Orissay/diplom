@@ -57,6 +57,7 @@ BOT_API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 def send_order_to_bot(telegram_id, order_id, order_data):
     try:
+        # Формируем сообщение на сайте
         items_text = "\n".join(
             f"▫ {item['name']} × {item['qty']} = {item['price'] * item['qty']:.2f} грн"
             for item in order_data["cart_items"]
@@ -75,11 +76,19 @@ def send_order_to_bot(telegram_id, order_id, order_data):
 💳 *Спосіб оплати:* {order_data['payment_method']}
 """
 
-        requests.post(f"{BOT_API_URL}/sendMessage", json={
-            'chat_id': telegram_id,
-            'text': message,
-            'parse_mode': 'Markdown'
-        })
+        # Добавляем реквизиты если нужно
+        if order_data['payment_method'] == 'По реквизитам':
+            message += "\n\n💳 *Реквизиты для оплаты:*\nБанк: ПриватБанк\nКарта: 1234 5678 9012 3456"
+
+        # Отправляем через Telegram API
+        requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            json={
+                'chat_id': telegram_id,
+                'text': message,
+                'parse_mode': 'Markdown'
+            }
+        )
 
     except Exception as e:
         print(f"Error sending order to bot: {e}")
