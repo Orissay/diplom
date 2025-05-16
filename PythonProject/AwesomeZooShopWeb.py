@@ -173,7 +173,7 @@ class Database:
 
             # Формуємо повідомлення
             items_text = "\n".join(
-                [f"• {item['title']} x{item['qty']} — {item['price']}₴" for item in cart_items]
+                [f"• {item['name']} x{item['qty']} — {item['price']}₴" for item in cart_items]
             )
             message_text = (
                 f"✅ *Ваше замовлення №{order_id} прийнято!*\n\n"
