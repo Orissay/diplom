@@ -196,7 +196,7 @@ class Database:
             print(f"Критична помилка при створенні замовлення: {str(e)}")
             st.error(f"Помилка створення замовлення: {str(e)}")
             st.stop()
-
+            
 
 # === Nova Poshta API ===
 class NovaPoshtaAPI:
