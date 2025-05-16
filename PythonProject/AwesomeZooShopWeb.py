@@ -133,7 +133,7 @@ class Database:
         return None
 
     @staticmethod
-    def create_order(city, department, phone, cart_items):
+    def create_order(city, department, phone, cart_items, payment_method):
         try:
             telegram_id = st.session_state.telegram_id
             if not telegram_id:
@@ -144,13 +144,14 @@ class Database:
             if not user.data:
                 raise ValueError("Пользователь не зарегистрирован. Начните с /start в боте.")
 
-            # Создаём заказ
+            # Создаём заказ с указанием способа оплаты
             order_data = {
                 "telegram_id": telegram_id,
                 "status": "pending",
                 "city": city,
                 "department": department,
                 "contact_phone": phone,
+                "payment_method": payment_method  # Добавляем способ оплаты
             }
             response = supabase.table("orders").insert(order_data).execute()
             order_id = response.data[0]['id']
@@ -173,7 +174,8 @@ class Database:
                     "total": sum(item["price"] * item["qty"] for item in cart_items),
                     "city": city,
                     "department": department,
-                    "phone": phone
+                    "phone": phone,
+                    "payment_method": payment_method  # Добавляем в уведомление
                 }
             )
 
