@@ -145,7 +145,7 @@ class Database:
             if not telegram_id:
                 raise PermissionError("Потрібна авторизація в Telegram.")
 
-            # Рассчитываем общую сумму
+            # Рассчитываем общую сумму (но не сохраняем её в БД)
             total = sum(item["price"] * item["qty"] for item in cart_items)
 
             order_data = {
@@ -154,8 +154,8 @@ class Database:
                 "city": city,
                 "department": department,
                 "contact_phone": phone,
-                "payment_method": payment_method,
-                "total": total
+                "payment_method": payment_method
+                # Убрали "total": total - так как этой колонки нет в таблице
             }
 
             # Создаем заказ в базе данных
@@ -182,7 +182,7 @@ class Database:
                 order_id=order_id,
                 order_data={
                     "cart_items": cart_items,
-                    "total": total,
+                    "total": total,  # Передаём total только в сообщение
                     "city": city,
                     "department": department,
                     "phone": phone,
