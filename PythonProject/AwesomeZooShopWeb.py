@@ -1,19 +1,18 @@
 import streamlit as st
 import requests
-import os
-import json
-from datetime import datetime, time
 from supabase import create_client, Client
 from streamlit import config as _config
+from config import SUPABASE_URL, SUPABASE_KEY, BOT_TOKEN, NOVA_POSHTA_API_KEY
 
-# Конфигурация Supabase
-SUPABASE_URL = "https://hxowoktqmcgrckptjvnz.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4b3dva3RxbWNncmNrcHRqdm56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcyMDc0MzgsImV4cCI6MjA2Mjc4MzQzOH0.znG6XuvFzHE_iIpl3j79UW7dJORB3UhF-qAHvuSrOiY"
+# Инициализация Supabase клиента
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Настройки Streamlit
 _config.set_option("theme.base", "light")
 _config.set_option("server.headless", True)
+
+# URL API Telegram бота
+BOT_API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 st.markdown("""
 <script>
@@ -46,14 +45,9 @@ def get_telegram_user():
     except:
         return None
 
-
 if "telegram_id" not in st.session_state:
     st.session_state.telegram_id = get_telegram_user()
     st.session_state.is_webapp = bool(st.session_state.telegram_id)
-
-BOT_TOKEN = "7244593523:AAGhMM2XuHgKQ0zII5zE0xNSe5mS5-N0vWw"
-BOT_API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
-
 
 def send_order_to_bot(telegram_id, order_id, order_data):
     try:
@@ -205,13 +199,11 @@ class Database:
 
 # === Nova Poshta API ===
 class NovaPoshtaAPI:
-    API_KEY = "78bdffdabccd762699b69916b9f3d6c3"
-
     @staticmethod
     def get_cities():
         try:
             response = requests.post("https://api.novaposhta.ua/v2.0/json/", json={
-                "apiKey": '78bdffdabccd762699b69916b9f3d6c3',
+                "apiKey": NOVA_POSHTA_API_KEY,
                 "modelName": "Address",
                 "calledMethod": "getCities",
                 "methodProperties": {}
@@ -224,7 +216,7 @@ class NovaPoshtaAPI:
     def get_warehouses(city_name):
         try:
             response = requests.post("https://api.novaposhta.ua/v2.0/json/", json={
-                "apiKey": '78bdffdabccd762699b69916b9f3d6c3',
+                "apiKey": NOVA_POSHTA_API_KEY,
                 "modelName": "Address",
                 "calledMethod": "getWarehouses",
                 "methodProperties": {
@@ -642,7 +634,18 @@ class CartManager:
 
 
 class MainUI:
-    verify_webapp()
+    @staticmethod
+    def verify_webapp():
+        if not st.session_state.get("is_webapp"):
+            st.error("""
+            ## Доступ только через Telegram бота!
+            Для оформления заказа:
+            1. Вернитесь в чат с ботом
+            2. Нажмите кнопку **'Магазин'**
+            3. Используйте интерфейс WebApp
+            """)
+            st.stop()
+
     @staticmethod
     def show_header():
         # Создаем 3 колонки: кнопка дома, поиск, корзина
@@ -787,7 +790,7 @@ def show_footer():
 def main():
     CartManager.init()
 
-    # Инициализация состояния (остается без изменений)
+    # Инициализация состояния
     if "page" not in st.session_state:
         st.session_state.page = "main"
     if "selected_category" not in st.session_state:
@@ -802,6 +805,8 @@ def main():
         st.session_state.cat_key = 0
     if "back_key" not in st.session_state:
         st.session_state.back_key = 0
+
+    MainUI.verify_webapp()
 
     if st.session_state.page == "cart":
         CartUI.show_cart()
