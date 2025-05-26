@@ -8,3 +8,4 @@ BOT_TOKEN = "7244593523:AAGhMM2XuHgKQ0zII5zE0xNSe5mS5-N0vWw"
 
 # API Nova Poshta
 NOVA_POSHTA_API_KEY = "78bdffdabccd762699b69916b9f3d6c3"
+WEBSITE_URL = "https://diplom-bt7xhfv4eibbmy4mbbtcje.streamlit.app/"
