@@ -4,14 +4,11 @@ from supabase import create_client, Client
 from streamlit import config as _config
 from config import SUPABASE_URL, SUPABASE_KEY, BOT_TOKEN, NOVA_POSHTA_API_KEY
 
-# Инициализация Supabase клиента
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Настройки Streamlit
 _config.set_option("theme.base", "light")
 _config.set_option("server.headless", True)
 
-# URL API Telegram бота
 BOT_API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 st.markdown("""
@@ -19,7 +16,6 @@ st.markdown("""
   (function() {
     if (window.Telegram && window.Telegram.WebApp) {
       const init = Telegram.WebApp.initData;
-      // если ещё нет в URL — добавляем и перезагружаем
       if (init && !window.location.search.includes("initData=")) {
         const qs = window.location.search ? window.location.search + "&" : "?";
         window.location.href = window.location.pathname + qs + "initData=" + encodeURIComponent(init);
@@ -36,10 +32,9 @@ def get_telegram_user():
         return None
     try:
         tid = int(tid)
-        # Дополнительная проверка через WebApp (если доступно)
         if st.session_state.get("is_webapp") and hasattr(st.experimental_user, "id"):
             if tid != st.experimental_user.id:
-                st.error("Несовпадение Telegram ID.")
+                st.error("Неспівпадіння Telegram ID.")
                 return None
         return tid
     except:
@@ -51,7 +46,6 @@ if "telegram_id" not in st.session_state:
 
 def send_order_to_bot(telegram_id, order_id, order_data):
     try:
-        # Формируем сообщение
         items_text = "\n".join(
             f"▫ {item['name']} × {item['qty']} = {item['price'] * item['qty']:.2f} грн"
             for item in order_data["cart_items"]
@@ -70,7 +64,6 @@ def send_order_to_bot(telegram_id, order_id, order_data):
 💳 *Спосіб оплати:* {order_data['payment_method']}
 """
 
-        # Добавляем реквизиты если выбрана оплата по реквизитам
         if order_data['payment_method'] == 'Переказ за реквізитами':
             message += "\n\n💳 *Реквизити для оплати:*\n" \
                        "Банк: ПриватБанк\n" \
@@ -80,7 +73,6 @@ def send_order_to_bot(telegram_id, order_id, order_data):
                        "AwesomeZooShop@gmail.com\n\n" \
                        "У темі листа вкажіть номер замовлення!"
 
-        # Отправляем сообщение
         response = requests.post(
             f"{BOT_API_URL}/sendMessage",
             json={
@@ -91,7 +83,7 @@ def send_order_to_bot(telegram_id, order_id, order_data):
         )
 
         if response.status_code != 200:
-            print(f"Ошибка отправки сообщения: {response.text}")
+            print(f"Помилка надсилання повыдомлення!: {response.text}")
 
     except Exception as e:
         print(f"Error sending order to bot: {e}")
@@ -99,11 +91,11 @@ def send_order_to_bot(telegram_id, order_id, order_data):
 def verify_webapp():
     if not st.session_state.get("is_webapp"):
         st.error("""
-        ## Доступ только через Telegram бота!
-        Для оформления заказа:
-        1. Вернитесь в чат с ботом
-        2. Нажмите кнопку **'Магазин'**
-        3. Используйте интерфейс WebApp
+        ## Доступ лише через Telegram бота!
+        Для оформлення замовлення:
+        1. Поверніться в чат з ботом
+        2. Натисніть кнопку **'Магазин'**
+        3. Використовуйте інтерфейс WebApp
         """)
         st.stop()
 
@@ -144,7 +136,6 @@ class Database:
             if not telegram_id:
                 raise PermissionError("Потрібна авторизація в Telegram.")
 
-            # Рассчитываем общую сумму (но не сохраняем её в БД)
             total = sum(item["price"] * item["qty"] for item in cart_items)
 
             order_data = {
@@ -154,10 +145,8 @@ class Database:
                 "department": department,
                 "contact_phone": phone,
                 "payment_method": payment_method
-                # Убрали "total": total - так как этой колонки нет в таблице
             }
 
-            # Создаем заказ в базе данных
             response = supabase.table("orders").insert(order_data).execute()
 
             if not response.data:
@@ -165,7 +154,6 @@ class Database:
 
             order_id = response.data[0]['id']
 
-            # Добавляем товары заказа
             for item in cart_items:
                 item_data = {
                     "order_id": order_id,
@@ -175,13 +163,12 @@ class Database:
                 }
                 supabase.table("order_items").insert(item_data).execute()
 
-            # Отправляем уведомление в бот
             send_order_to_bot(
                 telegram_id=telegram_id,
                 order_id=order_id,
                 order_data={
                     "cart_items": cart_items,
-                    "total": total,  # Передаём total только в сообщение
+                    "total": total,
                     "city": city,
                     "department": department,
                     "phone": phone,
@@ -197,7 +184,6 @@ class Database:
             st.stop()
 
 
-# === Nova Poshta API ===
 class NovaPoshtaAPI:
     @staticmethod
     def get_cities():
@@ -251,7 +237,6 @@ class OrderUI:
         total = sum(item["price"] * item["qty"] for item in cart_items)
         st.write(f"**Сума замовлення:** {total:.2f} грн")
 
-        # Инициализация данных заказа
         if "order_data" not in st.session_state:
             st.session_state.order_data = {
                 "cities": NovaPoshtaAPI.get_cities(),
@@ -269,7 +254,6 @@ class OrderUI:
                 if st.session_state.order_data["warehouses"]:
                     st.session_state.order_data["warehouse"] = st.session_state.order_data["warehouses"][0]
 
-        # Используем отдельные переменные для формы
         current_city = st.selectbox(
             "Місто",
             st.session_state.order_data["cities"],
@@ -279,7 +263,6 @@ class OrderUI:
             key="city_select"
         )
 
-        # Обновляем warehouses при изменении города
         if current_city != st.session_state.order_data["city"]:
             st.session_state.order_data["city"] = current_city
             st.session_state.order_data["warehouses"] = NovaPoshtaAPI.get_warehouses(current_city)
@@ -287,7 +270,6 @@ class OrderUI:
                 st.session_state.order_data["warehouse"] = st.session_state.order_data["warehouses"][0]
             st.rerun()
 
-        # Форма заказа
         with st.form(key="order_form"):
             warehouse = st.selectbox(
                 "Відділення Нової Пошти",
@@ -315,20 +297,17 @@ class OrderUI:
             submitted = st.form_submit_button("Підтвердити замовлення")
 
             if submitted:
-                # Валидация телефона
                 if len(phone) != 13 or not phone.startswith("+380") or not phone[1:].isdigit():
                     st.error("Будь ласка, введіть коректний номер телефону у форматі +380XXXXXXXXX")
                     st.stop()
 
                 try:
-                    # Сохраняем данные
                     st.session_state.order_data.update({
                         "warehouse": warehouse,
                         "phone": phone,
                         "payment_method": payment_method
                     })
 
-                    # Создаем заказ
                     order_id = Database.create_order(
                         city=current_city,
                         department=warehouse,
@@ -337,7 +316,6 @@ class OrderUI:
                         payment_method=payment_method
                     )
 
-                    # Успешное оформление
                     st.success("Замовлення успішно оформлено!")
 
                     # Закрытие WebApp если это Telegram
@@ -382,9 +360,8 @@ class OrderUI:
             st.session_state.phone_input_field = cleaned_value
 
     def process_order():
-        # Проверка WebApp окружения
         if not st.session_state.get("telegram_id"):
-            st.error("Для оформления заказа используйте Telegram бота")
+            st.error("Для оформлення замовлення використовуйте Telegram бота")
             return
 
         try:
@@ -395,7 +372,6 @@ class OrderUI:
                 cart_items=CartManager.get()
             )
 
-            # Закрытие WebApp
             close_script = """
             <script>
             if (window.Telegram && window.Telegram.WebApp) {
@@ -413,8 +389,6 @@ class OrderUI:
         except Exception as e:
             st.error(f"Ошибка: {str(e)}")
 
-
-# === Cart UI ===
 class CartUI:
     @staticmethod
     def show_cart_item(item):
@@ -581,7 +555,6 @@ class ProductUI:
                       use_container_width=True)
 
 
-# === Cart Manager ===
 class CartManager:
     @staticmethod
     def init():
@@ -638,17 +611,16 @@ class MainUI:
     def verify_webapp():
         if not st.session_state.get("is_webapp"):
             st.error("""
-            ## Доступ только через Telegram бота!
-            Для оформления заказа:
-            1. Вернитесь в чат с ботом
-            2. Нажмите кнопку **'Магазин'**
-            3. Используйте интерфейс WebApp
+            ## Доступ лише через Telegram бота!
+            Для оформлення замовлення:
+            1. Поверніться в чат з ботом
+            2. Натисніть кнопку **'Магазин'**
+            3. Використовуйте інтерфейс WebApp
             """)
             st.stop()
 
     @staticmethod
     def show_header():
-        # Создаем 3 колонки: кнопка дома, поиск, корзина
         col1, col2, col3 = st.columns([1, 5, 2])
 
         with col1:
@@ -672,17 +644,15 @@ class MainUI:
             )
 
         with col3:
-            MainUI._show_cart_button("header")  # Используем внутренний метод для кнопки в шапке
+            MainUI._show_cart_button("header")
 
         return st.session_state.get("search_text", "")
 
     @staticmethod
     def _show_cart_button(position="footer"):
-        """Внутренний метод для отображения кнопки корзины"""
         cart_count = CartManager.total_items()
         cart_text = f"🛒 Кошик ({cart_count})" if cart_count > 0 else "🛒 Кошик"
 
-        # Для нижней кнопки используем primary стиль, для верхней - secondary
         button_type = "primary" if position == "footer" else "secondary"
 
         if st.button(cart_text,
@@ -694,7 +664,6 @@ class MainUI:
 
     @staticmethod
     def show_cart_button():
-        """Публичный метод для отображения кнопки корзины внизу"""
         MainUI._show_cart_button("footer")
 
     @staticmethod
@@ -761,21 +730,21 @@ def show_footer():
     col1, col2 = st.columns(2)
 
     with col1:
-        if st.button("Про магазин", key="footer_about", help="Информация о нашем магазине"):
+        if st.button("Про магазин", key="footer_about", help="Інформація про наш магазин"):
             st.info("AwesomeZooShop - інтернет-магазин товарів для домашніх улюбленців. "
                     "Ми працюємо з 2025 року та пропонуємо якісні товари для котів та собак.")
 
-        if st.button("Доставка", key="footer_delivery", help="Условия доставки"):
+        if st.button("Доставка", key="footer_delivery", help="Умови доставки"):
             st.info("Після замовлення з вами зв'яжеться менеджер для підтвердження. "
                     "Обробка замовлень з понеділка по п'ятницю з 9:00 до 20:00. "
                     "Доставка здійснюється Новою Поштою.")
 
     with col2:
-        if st.button("Оплата", key="footer_payment", help="Способы оплаты"):
+        if st.button("Оплата", key="footer_payment", help="Способи оплати"):
             st.info("Оплата здійснюється на відділенні Нової Пошти або за реквізитами на карту. "
                     "Мінімальної суми замовлення немає.")
 
-        if st.button("Повернення", key="footer_returns", help="Условия возврата"):
+        if st.button("Повернення", key="footer_returns", help="Умови повернення"):
             st.info("Для повернення товару зв'яжіться з нами по телефону або email.")
 
     st.markdown("📞 **Контактний телефон:** +380 (44) 123-45-67")
@@ -790,7 +759,6 @@ def show_footer():
 def main():
     CartManager.init()
 
-    # Инициализация состояния
     if "page" not in st.session_state:
         st.session_state.page = "main"
     if "selected_category" not in st.session_state:
@@ -834,8 +802,7 @@ def main():
                 with cols[idx % 3]:
                     ProductUI.show_product_card(prod)
 
-        # Добавляем кнопку корзины внизу (идентичную верхней)
-        st.write("")  # Добавляем отступ
+        st.write("")
         MainUI.show_cart_button()
 
     show_footer()
