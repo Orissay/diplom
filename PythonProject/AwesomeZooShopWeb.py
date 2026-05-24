@@ -11,14 +11,35 @@ _config.set_option("server.headless", True)
 
 BOT_API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
+# === Інжекція скрипта для Telegram WebApp та Google Search Console ===
 st.markdown("""
 <script>
   (function() {
+    // 1. Логіка для Telegram WebApp (передача initData в URL)
     if (window.Telegram && window.Telegram.WebApp) {
       const init = Telegram.WebApp.initData;
       if (init && !window.location.search.includes("initData=")) {
         const qs = window.location.search ? window.location.search + "&" : "?";
         window.location.href = window.location.pathname + qs + "initData=" + encodeURIComponent(init);
+      }
+    }
+
+    // 2. Гарантована інжекція метатегу Google Search Console в головний <head>
+    try {
+      var targetDoc = window.top.document;
+      if (!targetDoc.querySelector('meta[name="google-site-verification"]')) {
+        var meta = targetDoc.createElement('meta');
+        meta.name = "google-site-verification";
+        meta.content = "ЗНАЧЕННЯ_МЕТАТЕГУ_ВІД_GOOGLE";
+        targetDoc.getElementsByTagName('head')[0].appendChild(meta);
+      }
+    } catch (e) {
+      console.log("Доступ до window.top обмежено, інжектуємо локально:", e);
+      if (!document.querySelector('meta[name="google-site-verification"]')) {
+        var metaLocal = document.createElement('meta');
+        metaLocal.name = "google-site-verification";
+        metaLocal.content = "ЗНАЧЕННЯ_МЕТАТЕГУ_ВІД_GOOGLE";
+        document.getElementsByTagName('head')[0].appendChild(metaLocal);
       }
     }
   })();
@@ -83,7 +104,7 @@ def send_order_to_bot(telegram_id, order_id, order_data):
         )
 
         if response.status_code != 200:
-            print(f"Помилка надсилання повыдомлення!: {response.text}")
+            print(f"Помилка надсилання підвидомлення!: {response.text}")
 
     except Exception as e:
         print(f"Error sending order to bot: {e}")
@@ -318,7 +339,6 @@ class OrderUI:
 
                     st.success("Замовлення успішно оформлено!")
 
-                    # Закрытие WebApp если это Telegram
                     if st.session_state.get("telegram_id"):
                         st.markdown("""
                             <script>
@@ -782,11 +802,11 @@ def main():
         OrderUI.show_order_form()
     else:
         search = MainUI.show_header()
-        cats = Database.get_categories()
-        MainUI.category_header(st.session_state.selected_category, cats)
+        幕 = Database.get_categories()
+        MainUI.category_header(st.session_state.selected_category, 幕)
 
         if not st.session_state.selected_category and not st.session_state.search_text:
-            MainUI.show_categories(cats)
+            MainUI.show_categories(幕)
 
         if st.session_state.viewing_product:
             prod = Database.get_product(st.session_state.viewing_product)
