@@ -46,6 +46,18 @@ st.markdown("""
 </script>
 """, unsafe_allow_html=True)
 
+# Безпечна перевірка Googlebot через query-параметри або контекст заголовків без явних зламаних імпортів
+def is_google_bot():
+    try:
+        # Перевірка через вбудований словник контексту заголовків Streamlit (доступний у нових версіях)
+        if hasattr(st, "context") and hasattr(st.context, "headers"):
+            user_agent = st.context.headers.get("User-Agent", "")
+            if "Googlebot" in user_agent:
+                return True
+    except:
+        pass
+    return False
+
 def get_telegram_user():
     params = st.query_params
     tid = params.get("telegram_id")
@@ -110,6 +122,10 @@ def send_order_to_bot(telegram_id, order_id, order_data):
         print(f"Error sending order to bot: {e}")
 
 def verify_webapp():
+    # Дозволяємо роботу Google зчитувати метатег без блокування інтерфейсу
+    if is_google_bot():
+        return
+        
     if not st.session_state.get("is_webapp"):
         st.error("""
         ## Доступ лише через Telegram бота!
@@ -629,6 +645,9 @@ class CartManager:
 class MainUI:
     @staticmethod
     def verify_webapp():
+        if is_google_bot():
+            return
+            
         if not st.session_state.get("is_webapp"):
             st.error("""
             ## Доступ лише через Telegram бота!
@@ -802,11 +821,11 @@ def main():
         OrderUI.show_order_form()
     else:
         search = MainUI.show_header()
-        幕 = Database.get_categories()
-        MainUI.category_header(st.session_state.selected_category, 幕)
+        cats = Database.get_categories()
+        MainUI.category_header(st.session_state.selected_category, cats)
 
         if not st.session_state.selected_category and not st.session_state.search_text:
-            MainUI.show_categories(幕)
+            MainUI.show_categories(cats)
 
         if st.session_state.viewing_product:
             prod = Database.get_product(st.session_state.viewing_product)
