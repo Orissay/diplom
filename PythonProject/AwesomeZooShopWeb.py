@@ -30,7 +30,7 @@ st.markdown("""
       if (!targetDoc.querySelector('meta[name="google-site-verification"]')) {
         var meta = targetDoc.createElement('meta');
         meta.name = "google-site-verification";
-        meta.content = "<meta name="google-site-verification" content="gNUTXUsylYXB6XYkjPM3f5KqqUd7MF5pSAAQzzG-MPw" />";
+        meta.content = "gNUTXUsylYXB6XYkjPM3f5KqqUd7MF5pSAAQzzG-MPw";
         targetDoc.getElementsByTagName('head')[0].appendChild(meta);
       }
     } catch (e) {
@@ -38,7 +38,7 @@ st.markdown("""
       if (!document.querySelector('meta[name="google-site-verification"]')) {
         var metaLocal = document.createElement('meta');
         metaLocal.name = "google-site-verification";
-        metaLocal.content = "<meta name="google-site-verification" content="gNUTXUsylYXB6XYkjPM3f5KqqUd7MF5pSAAQzzG-MPw" />";
+        metaLocal.content = "gNUTXUsylYXB6XYkjPM3f5KqqUd7MF5pSAAQzzG-MPw";
         document.getElementsByTagName('head')[0].appendChild(metaLocal);
       }
     }
