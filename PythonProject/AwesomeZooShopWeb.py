@@ -12,7 +12,6 @@ _config.set_option("server.headless", True)
 BOT_API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 st.markdown("""
-<meta name="google-site-verification" content="gNUTXUsylYXB6XYkjPM3f5KqqUd7MF5pSAAQzzG-MPw" />
 <script>
   (function() {
     if (window.Telegram && window.Telegram.WebApp) {
@@ -89,15 +88,15 @@ def send_order_to_bot(telegram_id, order_id, order_data):
     except Exception as e:
         print(f"Error sending order to bot: {e}")
 
-# ==============================================================================
-# 🔐 ПРОВЕРКА НА ТЕЛЕГРАМ ОТКЛЮЧЕНА (st.stop КОММЕНТИРОВАН, РОБОТ GOOGLE ПРОЙДЕТ)
-# ==============================================================================
 def verify_webapp():
     if not st.session_state.get("is_webapp"):
-        # Виводимо напис для звичайних людей
-        st.write("Доступ лише через Telegram бота.")
-        # Зупиняємо виконання тут! 
-        # Додаток не йде до Supabase, але успішно віддає HTML-каркас із метатегом!
+        st.error("""
+        ## Доступ лише через Telegram бота!
+        Для оформлення замовлення:
+        1. Поверніться в чат з ботом
+        2. Натисніть кнопку **'Магазин'**
+        3. Використовуйте інтерфейс WebApp
+        """)
         st.stop()
 
 # === Database ===
@@ -255,12 +254,11 @@ class OrderUI:
                 if st.session_state.order_data["warehouses"]:
                     st.session_state.order_data["warehouse"] = st.session_state.order_data["warehouses"][0]
 
-        cities = st.session_state.order_data["cities"]
         current_city = st.selectbox(
             "Місто",
-            cities,
-            index=cities.index(st.session_state.order_data["city"])
-            if st.session_state.order_data["city"] in cities
+            st.session_state.order_data["cities"],
+            index=st.session_state.order_data["cities"].index(st.session_state.order_data["city"])
+            if st.session_state.order_data["city"] in st.session_state.order_data["cities"]
             else 0,
             key="city_select"
         )
@@ -734,7 +732,7 @@ def show_footer():
     with col1:
         if st.button("Про магазин", key="footer_about", help="Інформація про наш магазин"):
             st.info("AwesomeZooShop - інтернет-магазин товарів для домашніх улюбленців. "
-                    "Ми працюємо з 2025 року та пропонуємо якісні товары для котів та собак.")
+                    "Ми працюємо з 2025 року та пропонуємо якісні товари для котів та собак.")
 
         if st.button("Доставка", key="footer_delivery", help="Умови доставки"):
             st.info("Після замовлення з вами зв'яжеться менеджер для підтвердження. "
@@ -776,7 +774,7 @@ def main():
     if "back_key" not in st.session_state:
         st.session_state.back_key = 0
 
-    verify_webapp()
+    MainUI.verify_webapp()
 
     if st.session_state.page == "cart":
         CartUI.show_cart()
